@@ -126,3 +126,31 @@ bd prime                # Refresh Beads context
 
 **Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md for details and anti-patterns.
 <!-- END BEADS CODEX SETUP -->
+
+## Build & Test
+
+All tooling comes from `shell.nix`. Enter it with `nix-shell` or `direnv allow`.
+
+```bash
+just check    # all pre-merge gates: fmt, clippy -D warnings, nextest, coverage >= 80%
+just fmt      # cargo fmt --check
+just lint     # cargo clippy --all-targets --all-features -- -D warnings
+just test     # cargo nextest run
+just cov      # coverage via cargo llvm-cov (src/main.rs excluded)
+just run      # run the app (pass extra args after `run`)
+just bench    # search benchmark (release build, ignored tests)
+```
+
+## Architecture Overview
+
+Single Rust crate (edition 2024, libcosmic/iced) for COSMIC. A resident process shows a
+layer-shell popup on D-Bus activation. `src/core` holds pure logic (reducer, search,
+actions); `src/app` is a thin libcosmic adapter; `src/pass`, `src/cache`, and `src/clipboard`
+are IO boundaries behind traits (`pass-cli` subprocesses, encrypted metadata cache,
+clipboard helper process). Design docs: `specs/001-quick-access-launcher/`.
+
+## Conventions & Patterns
+
+- Follow `.specify/memory/constitution.md` (test-first, no warnings, simplicity).
+- Never log, `Debug`-print, serialize, or pass in argv any secret; use `secrecy::SecretString`.
+- `src/core` must not import libcosmic or do IO.

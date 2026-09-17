@@ -6,3 +6,7 @@
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# Rust
+target/
+*.profraw

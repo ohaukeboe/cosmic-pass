@@ -60,18 +60,28 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 ## Build & Test
 
-_Add your build and test commands here_
+All tooling comes from `shell.nix`. Enter it with `nix-shell` or `direnv allow`.
 
 ```bash
-# Example:
-# npm install
-# npm test
+just check    # all pre-merge gates: fmt, clippy -D warnings, nextest, coverage >= 80%
+just fmt      # cargo fmt --check
+just lint     # cargo clippy --all-targets --all-features -- -D warnings
+just test     # cargo nextest run
+just cov      # coverage via cargo llvm-cov (src/main.rs excluded)
+just run      # run the app (pass extra args after `run`)
+just bench    # search benchmark (release build, ignored tests)
 ```
 
 ## Architecture Overview
 
-_Add a brief overview of your project architecture_
+Single Rust crate (edition 2024, libcosmic/iced) for COSMIC. A resident process shows a
+layer-shell popup on D-Bus activation. `src/core` holds pure logic (reducer, search,
+actions); `src/app` is a thin libcosmic adapter; `src/pass`, `src/cache`, and `src/clipboard`
+are IO boundaries behind traits (`pass-cli` subprocesses, encrypted metadata cache,
+clipboard helper process). Design docs: `specs/001-quick-access-launcher/`.
 
 ## Conventions & Patterns
 
-_Add your project-specific conventions here_
+- Follow `.specify/memory/constitution.md` (test-first, no warnings, simplicity).
+- Never log, `Debug`-print, serialize, or pass in argv any secret; use `secrecy::SecretString`.
+- `src/core` must not import libcosmic or do IO.

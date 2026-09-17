@@ -1,0 +1,51 @@
+[package]
+name = "cosmic-pass"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93"
+description = "Quick-access popup for Proton Pass on the COSMIC desktop (unofficial)"
+license = "GPL-3.0-only"
+repository = "https://github.com/ohaukeboe/cosmic-pass"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "cosmic-pass"
+path = "src/main.rs"
+
+[features]
+testing = []
+
+[dependencies]
+chacha20poly1305 = "0.11.0"
+clap = { version = "4.6.7", features = ["derive"] }
+dirs = "7.0.0"
+libcosmic = { git = "https://github.com/pop-os/libcosmic", rev = "87ab8179e1bd9880239c340855ae8862034bd0e8", version = "1.0.0", default-features = false, features = ["winit", "wayland", "tokio", "single-instance", "dbus-config", "autosize", "multi-window"] }
+nucleo-matcher = "0.3.1"
+oo7 = { version = "0.6.0", default-features = false, features = ["tokio", "native_crypto"] }
+postcard = { version = "1.1.3", features = ["use-std"] }
+rand = "0.10.2"
+rustix = { version = "1.1.5", features = ["process"] }
+secrecy = "0.10.3"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tempfile = "3.27.0"
+thiserror = "2.0.20"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "process", "time", "sync", "macros", "io-util"] }
+tokio-util = "0.7.19"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["fmt", "env-filter"] }
+wl-clipboard-rs = "0.9.3"
+zeroize = "1.9.0"
+
+[dev-dependencies]
+insta = { version = "1.48.0", features = ["json"] }
+tokio = { version = "1.53.1", features = ["test-util"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
