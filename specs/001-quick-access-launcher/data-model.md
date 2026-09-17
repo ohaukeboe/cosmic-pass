@@ -1,0 +1,171 @@
+# Data Model: Proton Pass Quick Access
+
+**Feature**: [spec.md](./spec.md) | **Plan**: [plan.md](./plan.md) | **Date**: 2026-09-17
+
+Types below are conceptual Rust shapes. Secret-bearing types never implement `Serialize`,
+`Debug` with content, or `Clone` into long-lived state.
+
+## Identifiers
+
+| Type | Shape | Notes |
+|------|-------|-------|
+| `ShareId` | newtype `String` | Vault share ID from `pass-cli`. May change across sessions. |
+| `ItemId` | newtype `String` | Unique only within a share. |
+| `ItemKey` | `(ShareId, ItemId)` | Global item identity. Used for usage records and lookups. |
+| `AccountId` | newtype `String` | From `pass-cli info`. Scopes the cache. |
+
+## Vault
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `share_id` | `ShareId` | Required, non-empty. |
+| `name` | `String` | Required. Shown on every result row. |
+
+## ItemKind
+
+`Login | Note | CreditCard | Identity | Alias | SshKey | Wifi | Custom | Unknown(String)`
+
+Unknown kinds from newer `pass-cli` versions are kept and shown with a generic icon.
+
+## ItemSummary (non-secret; searchable; cached)
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `key` | `ItemKey` | Required. |
+| `vault_name` | `String` | Copied from `Vault` for display and search. |
+| `kind` | `ItemKind` | Required. |
+| `title` | `String` | Required; empty titles shown as "(untitled)". |
+| `subtitle` | `Option<String>` | Username/email for logins, card holder for cards, alias address for aliases. Never note content or any secret. |
+| `urls` | `Vec<String>` | Login websites. Search uses the host part. |
+| `has_totp` | `bool` | True if the item has at least one TOTP field. |
+| `totp_fields` | `Vec<String>` | TOTP field names, for the action list. |
+| `custom_fields` | `Vec<FieldRef>` | Names and hidden flag of custom fields; never values. |
+| `modified_at` | `i64` (unix s) | For tie-breaking and change detection. |
+
+Validation:
+
+- Items with state `trashed` are dropped during parsing (FR-010).
+- The parser MUST NOT copy any of: password, TOTP secret/URI, card number, CVV, PIN,
+  note body, hidden custom field values, SSH private key, Wi-Fi password.
+
+## FieldRef
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `name` | `String` | `pass-cli` field name (`username`, `password`, `totp`, custom name, `Section.field`). |
+| `label` | `String` | Human label for the action list. |
+| `secret` | `bool` | Masked in UI; triggers clipboard timeout on copy. |
+
+## CopyAction
+
+Derived per item kind (FR-011–FR-013):
+
+| Kind | Primary (Enter) | Other actions |
+|------|-----------------|---------------|
+| Login | `password` | `username`, `email`, `totp`, `url` (first), each custom field |
+| CreditCard | card `number` | holder name, expiry, `cvv`, custom fields |
+| Note | `note` | custom fields |
+| Alias | alias email | `note` |
+| Identity, SshKey, Wifi, Custom | first secret custom/standard field; else first field | all fields |
+
+`CopyAction = { key: ItemKey, source: CopySource }` where
+`CopySource = Field(FieldRef) | Totp { field: String } | Url(String)`.
+`Url` needs no `pass-cli` call (value already in summary, non-secret).
+
+## SecretValue (never cached, never logged)
+
+`secrecy::SecretString`. Lives only between fetch and hand-off to the clipboard helper or
+the detail-pane reveal. Revealed values are dropped when the pane or window closes (FR-003).
+
+## TotpDisplay
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `field` | `String` | TOTP field name. |
+| `code` | `SecretString` | From `pass-cli item totp`. |
+| `period` | `u32` | 30 (assumed; `pass-cli` returns none). |
+| `valid_until` | `i64` | Next multiple of `period`. Refetch when now ≥ `valid_until`. |
+
+## UsageRecord (cached)
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `key` | `ItemKey` | Required. |
+| `last_used` | `i64` | Updated on every successful copy. |
+| `count` | `u32` | Saturating increment. |
+
+Max 200 records; oldest evicted. Records whose item disappears are pruned on refresh.
+Contains no values (FR-026).
+
+## SessionState
+
+```text
+Unknown ──probe──▶ Checking
+Checking ─ok────▶ SignedIn { account: AccountId }
+Checking ─err───▶ SignedOut | Locked | CliMissing | Error { message }
+SignedIn ─refresh error SignedOut─▶ SignedOut       (delete cache: FR-024b)
+SignedIn ─info returns other account─▶ SignedIn{new} (delete cache, refetch)
+SignedOut ─user starts login─▶ LoggingIn
+LoggingIn ─login exits 0─▶ Checking
+LoggingIn ─login fails─▶ Error { message }
+any ─network error─▶ state unchanged, data.stale = true
+```
+
+## DataState
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `vaults` | `Vec<Vault>` | Sorted by name. |
+| `items` | `Vec<ItemSummary>` | All active items across vaults. |
+| `fetched_at` | `Option<i64>` | Last successful full refresh. |
+| `stale` | `bool` | True if last refresh failed or data came from cache and refresh is pending. |
+| `refreshing` | `bool` | A refresh task is in flight. Only one at a time. |
+| `source` | `Memory \| DiskCache` | For the stale indicator text. |
+
+Refresh replaces `items` atomically only after every vault listing succeeds. A partial
+failure keeps the old list and sets `stale`.
+
+## ViewState (window UI; reset on hide)
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `visible` | `bool` | |
+| `query` | `String` | Cleared on hide (FR-003). |
+| `results` | `Vec<ResultRow>` | Max 50. Recomputed on query or data change. |
+| `selected` | `usize` | Clamped to `results.len()`. Reset to 0 on query change. |
+| `mode` | `List \| Actions(ItemKey) \| Detail(ItemKey) \| Preferences` | Escape goes back one level; from `List` it hides. |
+| `pending` | `Option<PendingFetch>` | `{ key, action, cancel: CancellationToken }`. Escape cancels. |
+| `revealed` | `Option<SecretString>` | Detail pane only. Dropped on mode change or hide. |
+| `totp` | `Option<TotpDisplay>` | Detail pane only. |
+| `notice` | `Option<Notice>` | Inline message, e.g. "No one-time code for this item". Auto-clears after 3 s. |
+
+`ResultRow = { index_into_items: usize, score: u32, match_ranges: Vec<Range> }`.
+
+## ClipboardJob
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `helper` | child process handle | `cosmic-pass clipboard-serve`. |
+| `expires_at` | `Instant` | now + `clipboard_clear_secs`. |
+| `secret` | `bool` | Non-secret copies (URL, username) do not start a timeout. |
+
+Only one job at a time. A new copy kills the previous helper first.
+Helper exits early → ownership lost → job ends, nothing to clear.
+Timer fires → kill helper → selection cleared by compositor.
+
+## Preferences (cosmic-config)
+
+See [contracts/config.md](./contracts/config.md).
+
+## CacheFile (encrypted on disk)
+
+| Field | Type |
+|-------|------|
+| `format_version` | `u16` (= 1) |
+| `account` | `AccountId` |
+| `fetched_at` | `i64` |
+| `vaults` | `Vec<Vault>` |
+| `items` | `Vec<ItemSummary>` |
+| `usage` | `Vec<UsageRecord>` |
+
+Envelope and rules: [contracts/cache-format.md](./contracts/cache-format.md).
