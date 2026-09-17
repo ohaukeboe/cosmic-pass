@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "cosmic_pass",
+  "project_id": "a9dd4f89-178e-4b5e-bf31-7be1c69a7223"
+}
