@@ -19,8 +19,19 @@ popup is gone.
 
 ## Install
 
+With flakes:
+
 ```bash
-nix-shell          # or: direnv allow
+nix profile install github:ohaukeboe/cosmic-pass
+systemctl --user enable --now cosmic-pass.service   # unit ships with the package
+```
+
+Or try it without installing: `nix run github:ohaukeboe/cosmic-pass`.
+
+From a clone, without Nix profiles:
+
+```bash
+nix develop        # or: direnv allow
 just install-user
 systemctl --user daemon-reload
 systemctl --user enable --now cosmic-pass.service
@@ -57,7 +68,8 @@ The full keyboard contract is in
 
 ## Development
 
-See the Build & Test section in [`CLAUDE.md`](CLAUDE.md). Design documents live in
+`nix develop` (or `direnv allow`) drops you in a shell with the toolchain. See the Build & Test
+section in [`CLAUDE.md`](CLAUDE.md). Design documents live in
 [`specs/001-quick-access-launcher/`](specs/001-quick-access-launcher/).
 
 ## License

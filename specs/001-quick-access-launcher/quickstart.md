@@ -8,7 +8,8 @@ them.
 ## Prerequisites
 
 - COSMIC desktop session on Wayland.
-- `nix` with `direnv` (the repo `.envrc` runs `use nix`), or run `nix-shell` manually.
+- `nix` with flakes enabled, plus `direnv` (the repo `.envrc` runs `use flake`), or run
+  `nix develop` manually.
 - `pass-cli` 2.3.x on `PATH`, signed in (`pass-cli login`) with at least one vault holding:
   a login with TOTP, a login without TOTP, a credit card, a secure note, and two logins with
   the same title in different vaults.
@@ -17,9 +18,10 @@ them.
 ## Build and quality gates
 
 ```bash
-nix-shell            # or: direnv allow
+nix develop          # or: direnv allow
 just check           # fmt + clippy -D warnings + nextest + coverage floor
-just run             # cargo run -- (shows the window)
+just run             # release build (debug builds render far too slowly)
+nix build            # the packaged binary, with the test suite run in the sandbox
 ```
 
 Expected: every gate passes with zero warnings.

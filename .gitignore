@@ -10,3 +10,7 @@
 # Rust
 target/
 *.profraw
+
+# nix build output
+result
+result-*

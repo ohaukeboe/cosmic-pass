@@ -212,8 +212,8 @@ confirmed from docs or source and each has a validation step in [quickstart.md](
 ## R10. Tooling and testing
 
 - **Decision**:
-  - Toolchain: Rust stable, edition 2024, from `shell.nix` (the host `rustup` has no default
-    toolchain). `shell.nix` also provides `pkg-config`, `wayland`, `libxkbcommon`,
+  - Toolchain: Rust stable, edition 2024, from the `flake.nix` dev shell (the host `rustup` has
+    no default toolchain). The dev shell also provides `pkg-config`, `wayland`, `libxkbcommon`,
     `vulkan-loader`, `mesa`, `fontconfig`, `freetype`, `expat`, `just`, `cargo-nextest`,
     `cargo-llvm-cov`.
   - Gates via `just`: `just fmt` (`cargo fmt --check`), `just lint`

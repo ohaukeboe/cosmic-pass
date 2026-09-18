@@ -1,4 +1,4 @@
-# Quality gates and developer tasks. Run inside `nix-shell` (or with direnv).
+# Quality gates and developer tasks. Run inside `nix develop` (or with direnv).
 
 default: check
 

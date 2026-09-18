@@ -25,7 +25,7 @@ Technical approach:
 
 ## Technical Context
 
-**Language/Version**: Rust stable, edition 2024 (toolchain from `shell.nix`; MSRV pinned to
+**Language/Version**: Rust stable, edition 2024 (toolchain from the `flake.nix` dev shell; MSRV pinned to
 libcosmic's requirement)
 
 **Primary Dependencies**:
@@ -87,7 +87,7 @@ vaults; 4 UI modes (list, actions, detail, preferences); read-only
 | III. Layered Coverage | Unit + integration + one acceptance test per story; ≥ 80% changed-line coverage; deterministic | PASS with note | PASS with deviation (see Complexity Tracking #1): story acceptance tests run the full app controller against the fake `pass-cli`, fake keyring and fake clipboard; compositor behavior (layer-shell focus, real clipboard) is covered by quickstart V2–V4 |
 | IV. Simplicity | Single crate; justified complexity only | PASS | PASS with justified items #2–#3 |
 | V. Contracts & Docs | Public interfaces documented; README + build/test docs updated | PASS | PASS: `contracts/` covers CLI, D-Bus, keyboard, config, cache format, consumed `pass-cli`; README and `CLAUDE.md`/`AGENTS.md` "Build & Test" update is a task |
-| Quality Standards | Single commands; reproducible env | PASS | PASS: `justfile` + `shell.nix` (research R10). Resolves constitution `TODO(TECH_STACK)` |
+| Quality Standards | Single commands; reproducible env | PASS | PASS: `justfile` + `flake.nix` (research R10). Resolves constitution `TODO(TECH_STACK)` |
 | Workflow | `bd` tracking; conventional commits; no agent commits without approval | PASS | PASS |
 
 No unjustified violations. The gate passes.
@@ -120,7 +120,8 @@ Cargo.toml
 Cargo.lock
 justfile                   # fmt, lint, test, cov, check, bench, run, install-user,
                            # capture-fixtures, leak-scan
-shell.nix                  # rust toolchain + wayland/graphics libs + nextest/llvm-cov/just
+flake.nix                  # package, dev shell (toolchain + wayland/graphics libs), app, overlay
+flake.lock
 rustfmt.toml
 clippy.toml
 

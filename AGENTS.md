@@ -129,7 +129,7 @@ bd prime                # Refresh Beads context
 
 ## Build & Test
 
-All tooling comes from `shell.nix`. Enter it with `nix-shell` or `direnv allow`.
+All tooling comes from the flake dev shell. Enter it with `nix develop` or `direnv allow`.
 
 ```bash
 just check    # all pre-merge gates: fmt, clippy -D warnings, nextest, coverage >= 80%
@@ -147,7 +147,8 @@ Single Rust crate (edition 2024, libcosmic/iced) for COSMIC. A resident process 
 layer-shell popup on D-Bus activation. `src/core` holds pure logic (reducer, search,
 actions); `src/app` is a thin libcosmic adapter; `src/pass`, `src/cache`, and `src/clipboard`
 are IO boundaries behind traits (`pass-cli` subprocesses, encrypted metadata cache,
-clipboard helper process). Design docs: `specs/001-quick-access-launcher/`.
+clipboard helper process). Packaged as a flake: `nix build`, `nix run`, `nix profile install`. Design docs:
+`specs/001-quick-access-launcher/`.
 
 ## Conventions & Patterns
 

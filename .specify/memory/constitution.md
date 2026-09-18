@@ -85,7 +85,7 @@ maintainers from undoing deliberate decisions.
   Files that can only run against a live compositor may be excluded from the coverage floor only
   when a plan's Complexity Tracking justifies it; they MUST contain no testable logic.
 - **Reproducible environment**: The development environment MUST be reproducible from the
-  repository (currently `shell.nix` + `.envrc`). All required tools MUST be declared there.
+  repository (currently `flake.nix` + `.envrc`). All required tools MUST be declared there.
 - **Automation**: Every quality gate in this constitution MUST be runnable locally with one
   command and SHOULD run in CI once CI exists.
 - **Performance**: Features with performance-sensitive paths MUST state measurable targets in
