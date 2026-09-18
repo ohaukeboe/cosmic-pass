@@ -87,6 +87,8 @@ pub struct CosmicPass {
     model: Model,
     deps: Deps,
     surface: surface::Surface,
+    /// When the show request being handled arrived, for the open-latency log (SC-001).
+    show_requested_at: Option<Instant>,
     last_press: Option<(usize, Instant)>,
     /// Last session state logged, so transitions are logged once.
     session_log: crate::core::state::SessionState,
@@ -171,12 +173,25 @@ fn msg_name(msg: &Msg) -> &'static str {
 
 impl CosmicPass {
     fn dispatch(&mut self, msg: Msg) -> Task<Message> {
+        // Open-latency measurement (SC-001) starts here, at the request itself, so it covers
+        // the reducer and the layer-surface round trip no matter whether the request came
+        // from a key press, the CLI, or D-Bus activation. It ends at `LayerEvent::Focused`.
+        if matches!(msg, Msg::Show | Msg::Toggle) {
+            self.show_requested_at = Some(Instant::now());
+        }
         let effects = self.model.update(msg, now());
         if self.session_log != self.model.session {
-            tracing::debug!(from = ?self.session_log, to = ?self.model.session, "session");
+            tracing::debug!(
+                from = session_label(&self.session_log),
+                to = session_label(&self.model.session),
+                "session"
+            );
             self.session_log = self.model.session.clone();
         }
-        Task::batch(effects.into_iter().map(|e| self.run_effect(e)))
+        let task = Task::batch(effects.into_iter().map(|e| self.run_effect(e)));
+        // Effects have run by now; a request that opened nothing is not carried forward.
+        self.show_requested_at = None;
+        task
     }
 
     fn update_inner(&mut self, message: Message) -> Task<Message> {
@@ -189,6 +204,14 @@ impl CosmicPass {
             // Focus follows the surface: an early focus task can be lost while the layer
             // surface is still being created, and `always_active` alone is not reliable.
             Message::Layer(LayerEvent::Focused, id) if id == self.surface.id => {
+                // The surface accepts typing from here on, so this is the end of the
+                // open-latency measurement (SC-001).
+                if let Some(elapsed) = self.surface.take_open_latency() {
+                    tracing::debug!(
+                        "open latency: {:.1} ms from show request to focus",
+                        elapsed.as_secs_f64() * 1000.0
+                    );
+                }
                 cosmic::widget::text_input::focus(surface::SEARCH_INPUT.clone())
             }
             Message::Layer(..) => Task::none(),
@@ -232,6 +255,8 @@ impl CosmicPass {
                     self.model.view.visible = false;
                     return Task::none();
                 }
+                let requested_at = self.show_requested_at.unwrap_or_else(Instant::now);
+                self.surface.mark_show_requested(requested_at);
                 self.surface.show()
             }
             Step::HideWindow => self.surface.hide(),
@@ -307,6 +332,30 @@ fn effect_name(effect: &Effect) -> &'static str {
     }
 }
 
+/// Session state without its payload: the signed-in variant carries the account id.
+fn session_label(session: &crate::core::state::SessionState) -> &'static str {
+    use crate::core::state::SessionState as S;
+    match session {
+        S::Unknown => "Unknown",
+        S::Checking => "Checking",
+        S::SignedIn(_) => "SignedIn",
+        S::SignedOut => "SignedOut",
+        S::Locked => "Locked",
+        S::CliMissing => "CliMissing",
+        S::LoggingIn => "LoggingIn",
+        S::Error(_) => "Error",
+    }
+}
+
+/// Named keys log by name; printable characters log only as `Character` (they are the query).
+fn key_label(key: &Key) -> &'static str {
+    match key {
+        Key::Named(_) => "Named",
+        Key::Character(_) => "Character",
+        Key::Unidentified => "Unidentified",
+    }
+}
+
 fn to_key_press(key: &Key, modifiers: Modifiers) -> Option<keys::KeyPress> {
     let name = match key {
         Key::Named(named) => format!("{named:?}"),
@@ -368,6 +417,7 @@ impl cosmic::Application for CosmicPass {
             model: Model::new(load_preferences()),
             deps,
             surface: surface::Surface::default(),
+            show_requested_at: None,
             last_press: None,
             session_log: crate::core::state::SessionState::Unknown,
         };
@@ -449,7 +499,8 @@ impl cosmic::Application for CosmicPass {
             cosmic::iced::Event::Keyboard(keyboard::Event::KeyPressed {
                 key, modifiers, ..
             }) => {
-                tracing::debug!(?key, ?status, window = ?_window, "key event");
+                // Never log the character itself: it is the user's search text.
+                tracing::debug!(key = key_label(&key), ?status, "key event");
                 // Let the text field handle editing keys it consumed.
                 let plain_char = matches!(key, Key::Character(_)) && !modifiers.control();
                 if plain_char && status == event::Status::Captured {
