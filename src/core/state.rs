@@ -319,6 +319,10 @@ impl Model {
                 | SessionState::Locked
                 | SessionState::CliMissing
                 | SessionState::LoggingIn
+                // An unclassified failure says nothing about whether a retry would fare
+                // better, so refreshing behind the error panel just repeats it on every
+                // window opening. The panel's Try again re-probes instead.
+                | SessionState::Error(_)
         )
     }
 
@@ -2044,6 +2048,38 @@ pub(crate) mod tests {
         let fx = m.update(Msg::SessionProbed(Ok(account("a"))), 0);
         assert_eq!(m.session, SessionState::SignedIn(account("a")));
         assert_eq!(names(&fx), ["Refresh"]);
+    }
+
+    #[test]
+    fn an_errored_session_does_not_keep_refreshing() {
+        // A probe that failed for an unclassified reason leaves the session in Error. Opening
+        // the popup must not quietly fan out another pass-cli run behind that panel: on a
+        // profile where pass-cli has never run, that is what turned one failure into a stream
+        // of them. Recovery is the explicit Try again the status panel offers.
+        let mut m = Model::default();
+        m.update(
+            Msg::SessionProbed(Err(PassError::Cli {
+                message: "Error creating client features".into(),
+            })),
+            0,
+        );
+        assert!(matches!(m.session, SessionState::Error(_)));
+
+        let fx = m.update(Msg::Show, 0);
+        assert!(
+            !names(&fx).contains(&"Refresh"),
+            "opening the popup must not refresh while the session is in error"
+        );
+        assert!(
+            m.update(Msg::RefreshRequested, 0).is_empty(),
+            "nor must an explicit refresh request"
+        );
+
+        let fx = m.update(Msg::Startup, 0);
+        assert!(
+            names(&fx).contains(&"ProbeSession"),
+            "Try again re-probes, which is how the user gets out of the error state"
+        );
     }
 
     #[test]

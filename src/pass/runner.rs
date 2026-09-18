@@ -50,6 +50,10 @@ pub struct TokioRunner {
     bin: PathBuf,
     env: Vec<(String, String)>,
     permits: std::sync::Arc<tokio::sync::Semaphore>,
+    /// Set once a `pass-cli` process has run to completion, whatever its exit status.
+    warm: std::sync::atomic::AtomicBool,
+    /// Held by the first call while [`Self::warm`] is false, so it runs alone.
+    warmup: tokio::sync::Mutex<()>,
 }
 
 impl TokioRunner {
@@ -60,7 +64,31 @@ impl TokioRunner {
             bin: bin.into(),
             env: Vec::new(),
             permits: std::sync::Arc::new(tokio::sync::Semaphore::new(Self::MAX_CONCURRENT)),
+            warm: std::sync::atomic::AtomicBool::new(false),
+            warmup: tokio::sync::Mutex::new(()),
         }
+    }
+
+    /// Serializes calls until one `pass-cli` process has run. On a profile where it has never
+    /// run, several at once race to create its session database and all but one fail with
+    /// "Error creating client features"; the first refresh on a new machine is exactly that
+    /// case. Returns the guard to hold for the duration of the call.
+    async fn warmup_guard(&self) -> Option<tokio::sync::MutexGuard<'_, ()>> {
+        if self.warm.load(std::sync::atomic::Ordering::Acquire) {
+            return None;
+        }
+        let guard = self.warmup.lock().await;
+        // Another call may have finished while this one waited for the lock.
+        if self.warm.load(std::sync::atomic::Ordering::Acquire) {
+            return None;
+        }
+        Some(guard)
+    }
+
+    /// A process came back, so `pass-cli` has initialized its database. A non-zero exit still
+    /// counts: a signed-out answer proves the CLI got that far.
+    fn mark_warm(&self) {
+        self.warm.store(true, std::sync::atomic::Ordering::Release);
     }
 
     /// Uses `$COSMIC_PASS_CLI`, else `pass-cli` from `PATH`.
@@ -82,6 +110,10 @@ impl TokioRunner {
     ) -> Result<Output, PassError> {
         let _permit = tokio::select! {
             permit = self.permits.acquire() => permit.map_err(|_| PassError::Cancelled)?,
+            () = cancel.cancelled() => return Err(PassError::Cancelled),
+        };
+        let _warmup = tokio::select! {
+            guard = self.warmup_guard() => guard,
             () = cancel.cancelled() => return Err(PassError::Cancelled),
         };
         let child = tokio::process::Command::new(&self.bin)
@@ -106,6 +138,7 @@ impl TokioRunner {
             () = cancel.cancelled() => return Err(PassError::Cancelled),
         };
         group.disarm();
+        self.mark_warm();
 
         if output.status.success() {
             Ok(Output {
@@ -180,6 +213,10 @@ impl TokioRunner {
             .await
             .map_err(|_| PassError::Timeout)??;
         group.disarm();
+        // Sign-in is long-running and user-driven, so it does not take the warm-up gate — a
+        // session probe must not wait behind a browser flow. It still reports the database as
+        // initialized once it is done.
+        self.mark_warm();
         if status.success() {
             Ok(())
         } else {

@@ -194,6 +194,53 @@ mod runner {
         assert!(peak <= 4, "peak concurrency {peak}");
         assert!(peak >= 2, "calls did not run concurrently");
     }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn serializes_calls_until_the_first_one_has_run() {
+        // On a profile where pass-cli has never run, concurrent processes race to create its
+        // session database and all but one die with "Error creating client features". The
+        // first call therefore runs alone; only once a process has come back do the rest fan
+        // out. Without this the very first refresh on a new machine fails.
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("times");
+        let runner = std::sync::Arc::new(fake_runner(&[
+            ("FAKE_SLEEP", "0.3"),
+            ("FAKE_TIMES_LOG", log.to_str().unwrap()),
+        ]));
+        let tasks: Vec<_> = (0..4)
+            .map(|_| {
+                let r = runner.clone();
+                tokio::spawn(
+                    async move { r.run(args(&["info"]), LONG, CancellationToken::new()).await },
+                )
+            })
+            .collect();
+        for t in tasks {
+            t.await.unwrap().unwrap();
+        }
+        let mut events: Vec<(u128, i32)> = std::fs::read_to_string(&log)
+            .unwrap()
+            .lines()
+            .map(|l| {
+                let (kind, ts) = l.split_once(' ').unwrap();
+                (ts.parse().unwrap(), if kind == "start" { 1 } else { -1 })
+            })
+            .collect();
+        events.sort();
+        // The first process must have ended before any second one started.
+        let first_end = events
+            .iter()
+            .position(|(_, delta)| *delta == -1)
+            .expect("a process ended");
+        let starts_before_first_end = events[..first_end]
+            .iter()
+            .filter(|(_, delta)| *delta == 1)
+            .count();
+        assert_eq!(
+            starts_before_first_end, 1,
+            "{starts_before_first_end} processes started before the first one finished"
+        );
+    }
 }
 
 mod backend {
