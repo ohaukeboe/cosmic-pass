@@ -32,19 +32,22 @@ pub struct ActionEntry {
 /// Every copyable field of an item, primary first (FR-013).
 pub fn all_actions(item: &ItemSummary) -> Vec<ActionEntry> {
     let primary = primary_action(item);
-    let username = username_field(item).map(|f| f.name.as_str());
+    // Bind by position, so a shortcut lands on exactly the field its own accessor copies
+    // even when several fields share a name (an item with two websites, say).
+    let username = username_index(item);
+    let url = url_index(item);
     let mut entries = Vec::new();
     if let Some(source) = &primary {
         entries.push(entry(source.clone(), Some(Action::CopyPrimary)));
     }
-    for field in &item.fields {
+    for (i, field) in item.fields.iter().enumerate() {
         let source = CopySource::Field(field.clone());
         if primary.as_ref() == Some(&source) {
             continue;
         }
-        let shortcut = if Some(field.name.as_str()) == username {
+        let shortcut = if Some(i) == username {
             Some(Action::CopyUsername)
-        } else if field.name == "url" {
+        } else if Some(i) == url {
             Some(Action::CopyUrl)
         } else {
             None
@@ -77,8 +80,21 @@ fn entry(source: CopySource, shortcut: Option<Action>) -> ActionEntry {
     }
 }
 
+fn index_of(item: &ItemSummary, name: &str) -> Option<usize> {
+    item.fields.iter().position(|f| f.name == name)
+}
+
+fn username_index(item: &ItemSummary) -> Option<usize> {
+    index_of(item, "username").or_else(|| index_of(item, "email"))
+}
+
+/// The first website; the parser names it `url` and numbers the rest (`url2`, ...).
+fn url_index(item: &ItemSummary) -> Option<usize> {
+    index_of(item, "url")
+}
+
 fn username_field(item: &ItemSummary) -> Option<&FieldRef> {
-    item.field("username").or_else(|| item.field("email"))
+    username_index(item).map(|i| &item.fields[i])
 }
 
 /// Username, else email (FR-012).
@@ -95,7 +111,7 @@ pub fn totp_action(item: &ItemSummary) -> Option<CopySource> {
 
 /// The first website.
 pub fn url_action(item: &ItemSummary) -> Option<CopySource> {
-    item.field("url").cloned().map(CopySource::Field)
+    url_index(item).map(|i| CopySource::Field(item.fields[i].clone()))
 }
 
 /// The field copied by Enter (FR-011).
@@ -266,6 +282,49 @@ mod tests {
                 ("Backup".into(), None, true),
             ]
         );
+    }
+
+    #[test]
+    fn every_website_is_listed_but_only_the_first_has_the_shortcut() {
+        let mut i = login_full();
+        i.fields.push(FieldRef::plain(
+            "url2",
+            "Website 2",
+            "https://second.x".into(),
+        ));
+        i.urls = vec!["https://x".into(), "https://second.x".into()];
+        let entries = all_actions(&i);
+        let websites: Vec<_> = entries
+            .iter()
+            .filter(|e| matches!(&e.source, CopySource::Field(f) if f.name.starts_with("url")))
+            .map(|e| (e.label.as_str(), e.shortcut, e.source.is_secret()))
+            .collect();
+        assert_eq!(
+            websites,
+            vec![
+                ("Website", Some(Action::CopyUrl), false),
+                ("Website 2", None, false),
+            ]
+        );
+        assert!(
+            matches!(url_action(&i), Some(CopySource::Field(f)) if f.value.as_deref() == Some("https://x"))
+        );
+    }
+
+    #[test]
+    fn a_shortcut_is_bound_to_at_most_one_entry() {
+        let mut i = login_full();
+        // A custom field may carry the same name as a built-in one.
+        i.fields.push(FieldRef::unstored("url", "url"));
+        i.fields.push(FieldRef::unstored("username", "username"));
+        let entries = all_actions(&i);
+        for action in [Action::CopyUrl, Action::CopyUsername] {
+            let bound = entries
+                .iter()
+                .filter(|e| e.shortcut == Some(action))
+                .count();
+            assert_eq!(bound, 1, "{action:?}");
+        }
     }
 
     #[test]

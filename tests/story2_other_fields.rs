@@ -13,11 +13,15 @@ fn key(id: &str) -> ItemKey {
 fn with_totp() -> ItemSummary {
     let mut i = summary("gh", "GitHub", ItemKind::Login);
     i.username = Some("octocat".into());
-    i.urls = vec!["https://github.com/login".into()];
+    i.urls = vec![
+        "https://github.com/login".into(),
+        "https://gist.github.com".into(),
+    ];
     i.fields = vec![
         FieldRef::plain("username", "Username", "octocat".into()),
         FieldRef::secret("password", "Password"),
         FieldRef::plain("url", "Website", "https://github.com/login".into()),
+        FieldRef::plain("url2", "Website 2", "https://gist.github.com".into()),
     ];
     i.totp_fields = vec!["totp_uri".into(), "Backup".into()];
     i
@@ -159,6 +163,44 @@ async fn action_list_lists_both_totp_fields() {
     let backup = labels.iter().position(|l| l == "Backup").unwrap();
     h.send(Msg::ActivateAction(Some(backup))).await;
     assert_eq!(last_copy(&h), Some(("222222".into(), true)));
+}
+
+#[tokio::test]
+async fn action_list_lists_every_website() {
+    let mut h = opened("github").await;
+    h.send(Msg::OpenActions).await;
+    let labels: Vec<_> = h.model.actions().into_iter().map(|a| a.label).collect();
+    assert!(labels.contains(&"Website".to_owned()));
+    let second = labels.iter().position(|l| l == "Website 2").unwrap();
+    h.send(Msg::ActivateAction(Some(second))).await;
+    assert_eq!(
+        last_copy(&h),
+        Some(("https://gist.github.com".into(), false))
+    );
+    assert_eq!(
+        h.backend.field_calls() + h.backend.totp_calls(),
+        0,
+        "a website is copied from the summary"
+    );
+}
+
+#[tokio::test]
+async fn copy_url_shortcut_uses_the_first_website() {
+    let mut h = opened("github").await;
+    h.send(Msg::OpenActions).await;
+    let with_shortcut: Vec<_> = h
+        .model
+        .actions()
+        .into_iter()
+        .filter(|a| a.shortcut == Some(cosmic_pass::config::Action::CopyUrl))
+        .map(|a| a.label)
+        .collect();
+    assert_eq!(with_shortcut, vec!["Website".to_owned()]);
+    h.send(Msg::CopyUrl).await;
+    assert_eq!(
+        last_copy(&h),
+        Some(("https://github.com/login".into(), false))
+    );
 }
 
 #[tokio::test]

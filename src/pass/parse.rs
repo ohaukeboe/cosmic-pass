@@ -402,6 +402,19 @@ fn plain_if(fields: &mut Vec<FieldRef>, value: &Option<String>, name: &str, labe
     }
 }
 
+/// Field name and label for the `i`-th website of a login.
+///
+/// The first one keeps the plain `url` name that the copy-website shortcut binds to; the
+/// rest are numbered. The action list already shows each value underneath its label, so a
+/// number is enough to tell them apart and stays stable for URLs with no readable host.
+fn website_field(i: usize) -> (String, String) {
+    if i == 0 {
+        ("url".to_owned(), "Website".to_owned())
+    } else {
+        (format!("url{}", i + 1), format!("Website {}", i + 1))
+    }
+}
+
 fn custom_fields(s: &mut ItemSummary, raw: Vec<RawCustomField>) {
     for f in raw {
         match f.content {
@@ -430,8 +443,9 @@ impl RawContent {
                 plain_if(f, &b.username, "username", "Username");
                 plain_if(f, &b.email, "email", "Email");
                 secret_if(f, b.password, "password", "Password");
-                if let Some(url) = b.urls.first() {
-                    f.push(FieldRef::plain("url", "Website", url.clone()));
+                for (i, url) in b.urls.iter().enumerate() {
+                    let (name, label) = website_field(i);
+                    f.push(FieldRef::plain(name, label, url.clone()));
                 }
                 if b.totp_uri.0 {
                     s.totp_fields.push("totp_uri".into());
@@ -618,6 +632,38 @@ mod tests {
                 .is_some_and(|f| !f.secret && f.value.is_none())
         );
         assert_eq!(gh.modified_at, 1_770_091_506);
+    }
+
+    #[test]
+    fn every_website_becomes_a_copyable_field() {
+        let items = synthetic_items();
+        let gh = find(&items, "login-github");
+        let websites: Vec<_> = gh
+            .fields
+            .iter()
+            .filter(|f| f.name.starts_with("url"))
+            .map(|f| {
+                (
+                    f.name.as_str(),
+                    f.label.as_str(),
+                    f.value.as_deref(),
+                    f.secret,
+                )
+            })
+            .collect();
+        assert_eq!(
+            websites,
+            vec![
+                ("url", "Website", Some("https://github.com/login"), false),
+                ("url2", "Website 2", Some("https://gist.github.com"), false),
+            ]
+        );
+        let mail = find(&items, "login-mail");
+        assert!(
+            mail.field("url2").is_none(),
+            "a single website must not be numbered"
+        );
+        assert_eq!(mail.field("url").map(|f| f.label.as_str()), Some("Website"));
     }
 
     #[test]

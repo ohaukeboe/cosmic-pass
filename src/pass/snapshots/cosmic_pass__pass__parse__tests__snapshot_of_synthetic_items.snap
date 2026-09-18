@@ -48,6 +48,12 @@ expression: synthetic_items()
         "value": "https://github.com/login"
       },
       {
+        "name": "url2",
+        "label": "Website 2",
+        "secret": false,
+        "value": "https://gist.github.com"
+      },
+      {
         "name": "Recovery code",
         "label": "Recovery code",
         "secret": true,
