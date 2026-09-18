@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.ohaukeboe.CosmicPass</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <name>COSMIC Pass</name>
+  <summary>Quick access to Proton Pass from the COSMIC desktop</summary>
+  <description>
+    <p>
+      COSMIC Pass is a keyboard-driven popup that searches your Proton Pass items and copies
+      passwords, usernames, and one-time codes to the clipboard. Secrets are fetched on demand
+      and cleared from the clipboard after a timeout.
+    </p>
+    <p>
+      This is an unofficial front-end for the Proton Pass command-line tool (pass-cli). It is
+      not affiliated with or endorsed by Proton AG.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.ohaukeboe.CosmicPass.desktop</launchable>
+  <url type="homepage">https://github.com/ohaukeboe/cosmic-pass</url>
+  <content_rating type="oars-1.1"/>
+</component>

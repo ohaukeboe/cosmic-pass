@@ -1,0 +1,401 @@
+---
+source: src/pass/parse.rs
+expression: synthetic_items()
+---
+[
+  {
+    "key": {
+      "share": "share-a",
+      "item": "login-github"
+    },
+    "vault_name": "Personal",
+    "kind": "Login",
+    "title": "GitHub",
+    "username": "octocat",
+    "email": "octo@example.invalid",
+    "subtitle": "octocat",
+    "urls": [
+      "https://github.com/login",
+      "https://gist.github.com"
+    ],
+    "totp_fields": [
+      "totp_uri",
+      "Backup TOTP"
+    ],
+    "fields": [
+      {
+        "name": "username",
+        "label": "Username",
+        "secret": false,
+        "value": "octocat"
+      },
+      {
+        "name": "email",
+        "label": "Email",
+        "secret": false,
+        "value": "octo@example.invalid"
+      },
+      {
+        "name": "password",
+        "label": "Password",
+        "secret": true,
+        "value": null
+      },
+      {
+        "name": "url",
+        "label": "Website",
+        "secret": false,
+        "value": "https://github.com/login"
+      },
+      {
+        "name": "Recovery code",
+        "label": "Recovery code",
+        "secret": true,
+        "value": null
+      },
+      {
+        "name": "Account id",
+        "label": "Account id",
+        "secret": false,
+        "value": null
+      },
+      {
+        "name": "note",
+        "label": "Note",
+        "secret": true,
+        "value": null
+      }
+    ],
+    "modified_at": 1770091506
+  },
+  {
+    "key": {
+      "share": "share-a",
+      "item": "login-mail"
+    },
+    "vault_name": "Personal",
+    "kind": "Login",
+    "title": "Example Mail",
+    "username": null,
+    "email": "me@example.invalid",
+    "subtitle": "me@example.invalid",
+    "urls": [
+      "https://mail.example.invalid/"
+    ],
+    "totp_fields": [],
+    "fields": [
+      {
+        "name": "email",
+        "label": "Email",
+        "secret": false,
+        "value": "me@example.invalid"
+      },
+      {
+        "name": "password",
+        "label": "Password",
+        "secret": true,
+        "value": null
+      },
+      {
+        "name": "url",
+        "label": "Website",
+        "secret": false,
+        "value": "https://mail.example.invalid/"
+      }
+    ],
+    "modified_at": 1767571200
+  },
+  {
+    "key": {
+      "share": "share-a",
+      "item": "note-wifi-codes"
+    },
+    "vault_name": "Personal",
+    "kind": "Note",
+    "title": "Router notes",
+    "username": null,
+    "email": null,
+    "subtitle": null,
+    "urls": [],
+    "totp_fields": [],
+    "fields": [
+      {
+        "name": "note",
+        "label": "Note",
+        "secret": true,
+        "value": null
+      }
+    ],
+    "modified_at": 1767657600
+  },
+  {
+    "key": {
+      "share": "share-a",
+      "item": "card-visa"
+    },
+    "vault_name": "Personal",
+    "kind": "CreditCard",
+    "title": "Visa",
+    "username": null,
+    "email": null,
+    "subtitle": "Fixture Holder",
+    "urls": [],
+    "totp_fields": [],
+    "fields": [
+      {
+        "name": "number",
+        "label": "Card number",
+        "secret": true,
+        "value": null
+      },
+      {
+        "name": "cardholder_name",
+        "label": "Cardholder",
+        "secret": false,
+        "value": "Fixture Holder"
+      },
+      {
+        "name": "expiration_date",
+        "label": "Expiration date",
+        "secret": false,
+        "value": "2030-01"
+      },
+      {
+        "name": "verification_number",
+        "label": "Security code",
+        "secret": true,
+        "value": null
+      },
+      {
+        "name": "pin",
+        "label": "PIN",
+        "secret": true,
+        "value": null
+      }
+    ],
+    "modified_at": 1767744000
+  },
+  {
+    "key": {
+      "share": "share-a",
+      "item": "identity-me"
+    },
+    "vault_name": "Personal",
+    "kind": "Identity",
+    "title": "Me",
+    "username": null,
+    "email": "person@example.invalid",
+    "subtitle": "Fixture Person",
+    "urls": [],
+    "totp_fields": [],
+    "fields": [
+      {
+        "name": "full_name",
+        "label": "Full name",
+        "secret": false,
+        "value": "Fixture Person"
+      },
+      {
+        "name": "email",
+        "label": "Email",
+        "secret": false,
+        "value": "person@example.invalid"
+      },
+      {
+        "name": "social_security_number",
+        "label": "Social security number",
+        "secret": true,
+        "value": null
+      },
+      {
+        "name": "passport_number",
+        "label": "Passport number",
+        "secret": true,
+        "value": null
+      },
+      {
+        "name": "license_number",
+        "label": "License number",
+        "secret": true,
+        "value": null
+      }
+    ],
+    "modified_at": 1767916800
+  },
+  {
+    "key": {
+      "share": "share-a",
+      "item": "wifi-home"
+    },
+    "vault_name": "Personal",
+    "kind": "Wifi",
+    "title": "Home Wi-Fi",
+    "username": null,
+    "email": null,
+    "subtitle": "fixture-ssid",
+    "urls": [],
+    "totp_fields": [],
+    "fields": [
+      {
+        "name": "password",
+        "label": "Password",
+        "secret": true,
+        "value": null
+      },
+      {
+        "name": "ssid",
+        "label": "Network name",
+        "secret": false,
+        "value": "fixture-ssid"
+      }
+    ],
+    "modified_at": 1768003200
+  },
+  {
+    "key": {
+      "share": "share-a",
+      "item": "ssh-server"
+    },
+    "vault_name": "Personal",
+    "kind": "SshKey",
+    "title": "Build server key",
+    "username": null,
+    "email": null,
+    "subtitle": null,
+    "urls": [],
+    "totp_fields": [],
+    "fields": [
+      {
+        "name": "private_key",
+        "label": "Private key",
+        "secret": true,
+        "value": null
+      },
+      {
+        "name": "public_key",
+        "label": "Public key",
+        "secret": false,
+        "value": "ssh-ed25519 AAAAfixture"
+      },
+      {
+        "name": "Passphrase",
+        "label": "Passphrase",
+        "secret": true,
+        "value": null
+      },
+      {
+        "name": "Hostname",
+        "label": "Hostname",
+        "secret": false,
+        "value": null
+      }
+    ],
+    "modified_at": 1768089600
+  },
+  {
+    "key": {
+      "share": "share-a",
+      "item": "custom-api"
+    },
+    "vault_name": "Personal",
+    "kind": "Custom",
+    "title": "",
+    "username": null,
+    "email": null,
+    "subtitle": null,
+    "urls": [],
+    "totp_fields": [],
+    "fields": [
+      {
+        "name": "Endpoint",
+        "label": "Endpoint",
+        "secret": false,
+        "value": null
+      },
+      {
+        "name": "Token",
+        "label": "Token",
+        "secret": true,
+        "value": null
+      }
+    ],
+    "modified_at": 1768176000
+  },
+  {
+    "key": {
+      "share": "share-a",
+      "item": "future-kind"
+    },
+    "vault_name": "Personal",
+    "kind": {
+      "Unknown": "PasskeyThing"
+    },
+    "title": "Future thing",
+    "username": null,
+    "email": null,
+    "subtitle": null,
+    "urls": [],
+    "totp_fields": [],
+    "fields": [],
+    "modified_at": 1768262400
+  },
+  {
+    "key": {
+      "share": "-share-b",
+      "item": "login-github-work"
+    },
+    "vault_name": "Work",
+    "kind": "Login",
+    "title": "GitHub",
+    "username": "work-octo",
+    "email": "work@example.invalid",
+    "subtitle": "work-octo",
+    "urls": [
+      "https://github.com/"
+    ],
+    "totp_fields": [],
+    "fields": [
+      {
+        "name": "username",
+        "label": "Username",
+        "secret": false,
+        "value": "work-octo"
+      },
+      {
+        "name": "email",
+        "label": "Email",
+        "secret": false,
+        "value": "work@example.invalid"
+      },
+      {
+        "name": "password",
+        "label": "Password",
+        "secret": true,
+        "value": null
+      },
+      {
+        "name": "url",
+        "label": "Website",
+        "secret": false,
+        "value": "https://github.com/"
+      }
+    ],
+    "modified_at": 1772323200
+  },
+  {
+    "key": {
+      "share": "-share-b",
+      "item": "alias-shop"
+    },
+    "vault_name": "Work",
+    "kind": "Alias",
+    "title": "Shop alias",
+    "username": null,
+    "email": null,
+    "subtitle": null,
+    "urls": [],
+    "totp_fields": [],
+    "fields": [],
+    "modified_at": 1772409600
+  }
+]

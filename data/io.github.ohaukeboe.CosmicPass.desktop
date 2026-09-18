@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=COSMIC Pass
+GenericName=Password Quick Access
+Comment=Search Proton Pass and copy passwords
+Exec=cosmic-pass
+Icon=io.github.ohaukeboe.CosmicPass
+Terminal=false
+Categories=Utility;Security;
+Keywords=password;proton;pass;totp;
+StartupNotify=false
+X-CosmicApplet=false
