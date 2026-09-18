@@ -1,6 +1,6 @@
 //! Maps key presses to `core` messages using the configured shortcuts.
 
-use crate::config::{Action, Modifier, Preferences};
+use crate::config::{Action, CLIPBOARD_CLEAR_STEP, Modifier, Preferences};
 use crate::core::state::{Mode, Msg};
 
 /// A key press in toolkit-neutral form. `key` is a named key (`ArrowDown`, `Enter`, `F5`)
@@ -40,12 +40,25 @@ const MODIFIER_KEYS: [&str; 8] = [
     "Control", "Shift", "Alt", "Super", "Meta", "Hyper", "AltGraph", "CapsLock",
 ];
 
-pub fn map_key(press: &KeyPress, mode: &Mode, prefs: &Preferences, ctx: KeyContext) -> Option<Msg> {
+/// A bare key press, ignoring Shift: on most layouts `+` is only reachable with it.
+fn unshifted(press: &KeyPress, keys: &[&str]) -> bool {
+    keys.iter()
+        .any(|k| press.is(&[], k) || press.is(&[Modifier::Shift], k))
+}
+
+/// The preferences editor has no focus ring to walk — `set_keyboard_nav(false)` turns Tab
+/// traversal off — so every control it offers needs its own chord here.
+fn preferences_key(
+    press: &KeyPress,
+    rebinding: Option<Action>,
+    prefs: &Preferences,
+) -> Option<Msg> {
     use Modifier::{Ctrl, Shift};
-    if let Mode::Preferences { rebinding: Some(_) } = mode {
-        if press.is(&[], "Escape") {
-            return Some(Msg::Escape);
-        }
+    if press.is(&[], "Escape") {
+        return Some(Msg::Escape);
+    }
+    if rebinding.is_some() {
+        // Capture mode: anything but a lone modifier becomes the new binding.
         if MODIFIER_KEYS
             .iter()
             .any(|m| press.key.eq_ignore_ascii_case(m))
@@ -56,6 +69,26 @@ pub fn map_key(press: &KeyPress, mode: &Mode, prefs: &Preferences, ctx: KeyConte
             &press.modifiers,
             &press.key,
         )));
+    }
+    if press.is(&[Ctrl, Shift], "Delete") {
+        return Some(Msg::ResetShortcuts);
+    }
+    if unshifted(press, &["ArrowUp", "ArrowRight", "+", "="]) {
+        return Some(Msg::AdjustClipboardClear(CLIPBOARD_CLEAR_STEP));
+    }
+    if unshifted(press, &["ArrowDown", "ArrowLeft", "-", "_"]) {
+        return Some(Msg::AdjustClipboardClear(-CLIPBOARD_CLEAR_STEP));
+    }
+    // Each row shows the chord it holds, so pressing that chord is how the row is reached.
+    prefs
+        .action_for(&press.modifiers, &press.key)
+        .map(Msg::StartRebind)
+}
+
+pub fn map_key(press: &KeyPress, mode: &Mode, prefs: &Preferences, ctx: KeyContext) -> Option<Msg> {
+    use Modifier::{Ctrl, Shift};
+    if let Mode::Preferences { rebinding } = mode {
+        return preferences_key(press, *rebinding, prefs);
     }
     let in_actions = matches!(mode, Mode::Actions { .. });
     if press.is(&[], "ArrowDown") || press.is(&[Ctrl], "n") || press.is(&[Ctrl], "j") {
@@ -79,9 +112,6 @@ pub fn map_key(press: &KeyPress, mode: &Mode, prefs: &Preferences, ctx: KeyConte
     if matches!(mode, Mode::List) && ctx.caret_at_end && press.is(&[], "ArrowRight") {
         return Some(Msg::OpenActions);
     }
-    if matches!(mode, Mode::Preferences { .. }) {
-        return None;
-    }
     if matches!(mode, Mode::List)
         && prefs.action_for(&press.modifiers, &press.key) == Some(Action::Preferences)
     {
@@ -97,6 +127,8 @@ pub fn map_key(press: &KeyPress, mode: &Mode, prefs: &Preferences, ctx: KeyConte
         Action::OpenActions if matches!(mode, Mode::List) => Some(Msg::OpenActions),
         Action::OpenDetail if matches!(mode, Mode::List) => Some(Msg::OpenDetail),
         Action::Reveal if matches!(mode, Mode::Detail { .. }) => Some(Msg::ToggleReveal),
+        Action::SignIn => Some(Msg::StartLogin),
+        Action::Retry => Some(Msg::Startup),
         Action::OpenActions | Action::OpenDetail | Action::Reveal | Action::Preferences => None,
     }
 }
@@ -274,13 +306,91 @@ mod tests {
         assert!(map_in(&detail, &[Ctrl], "i", false).is_none());
     }
 
+    fn prefs_mode() -> Mode {
+        Mode::Preferences { rebinding: None }
+    }
+
     #[test]
-    fn preferences_mode_ignores_chords() {
-        assert!(map_in(&Mode::Preferences { rebinding: None }, &[Ctrl], "u", false).is_none());
+    fn preferences_mode_leaves_the_result_list_alone() {
+        for (mods, key) in [
+            (&[][..], "PageDown"),
+            (&[][..], "PageUp"),
+            (&[Ctrl][..], "n"),
+            (&[Ctrl][..], "p"),
+        ] {
+            assert!(
+                map_in(&prefs_mode(), mods, key, false).is_none(),
+                "{key} must not reach the hidden list"
+            );
+        }
+        for (key, pat) in [
+            ("ArrowDown", -10_i64),
+            ("ArrowUp", 10),
+            ("ArrowLeft", -10),
+            ("ArrowRight", 10),
+        ] {
+            let msg = map_in(&prefs_mode(), &[], key, false);
+            assert!(
+                matches!(msg, Some(Msg::AdjustClipboardClear(step)) if step == pat),
+                "{key}"
+            );
+        }
         assert!(is(
-            map_in(&Mode::Preferences { rebinding: None }, &[], "Escape", false),
+            map_in(&prefs_mode(), &[], "Escape", false),
             |m| matches!(m, Msg::Escape)
         ));
+    }
+
+    #[test]
+    fn preferences_editor_is_reachable_by_keyboard() {
+        assert!(matches!(
+            map_in(&prefs_mode(), &[Shift], "+", false),
+            Some(Msg::AdjustClipboardClear(10))
+        ));
+        assert!(matches!(
+            map_in(&prefs_mode(), &[], "-", false),
+            Some(Msg::AdjustClipboardClear(-10))
+        ));
+        assert!(is(
+            map_in(&prefs_mode(), &[Ctrl, Shift], "Delete", false),
+            |m| matches!(m, Msg::ResetShortcuts)
+        ));
+        // A row is rebound by pressing the chord it currently shows.
+        assert!(is(
+            map_in(&prefs_mode(), &[Ctrl], "u", false),
+            |m| matches!(m, Msg::StartRebind(Action::CopyUsername))
+        ));
+        assert!(is(
+            map_in(&prefs_mode(), &[], "Enter", false),
+            |m| matches!(m, Msg::StartRebind(Action::CopyPrimary))
+        ));
+        assert!(map_in(&prefs_mode(), &[Ctrl], "q", false).is_none());
+    }
+
+    #[test]
+    fn rebind_capture_still_wins_over_editor_keys() {
+        let rebinding = Mode::Preferences {
+            rebinding: Some(Action::Refresh),
+        };
+        for key in ["ArrowDown", "-", "Delete"] {
+            assert!(
+                is(map_in(&rebinding, &[], key, false), |m| matches!(
+                    m,
+                    Msg::ChordCaptured(_)
+                )),
+                "{key}"
+            );
+        }
+    }
+
+    #[test]
+    fn status_panel_actions_have_chords() {
+        assert!(is(map(&[Ctrl, Shift], "s"), |m| matches!(
+            m,
+            Msg::StartLogin
+        )));
+        assert!(is(map(&[Ctrl, Shift], "r"), |m| matches!(m, Msg::Startup)));
+        assert!(!is(map(&[Ctrl], "r"), |m| matches!(m, Msg::Startup)));
     }
 
     #[test]

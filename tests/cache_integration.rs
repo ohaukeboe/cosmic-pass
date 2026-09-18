@@ -175,3 +175,18 @@ async fn env_override_selects_directory() {
     let default = CacheStore::default_dir_from(None);
     assert!(default.ends_with("cosmic-pass"));
 }
+
+#[tokio::test]
+async fn locked_keyring_keeps_the_cache_file() {
+    let s = setup(MemoryKeyStore::default());
+    let file = cache_file("acc");
+    s.store.save(&file).await.unwrap();
+    s.keys.set_unavailable(true);
+    assert!(s.store.load().await.is_none());
+    assert!(
+        s.file().exists(),
+        "a locked keyring must not destroy a readable cache"
+    );
+    s.keys.set_unavailable(false);
+    assert_eq!(s.store.load().await, Some(file), "readable once unlocked");
+}

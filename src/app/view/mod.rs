@@ -18,14 +18,47 @@ pub mod status;
 pub static RESULTS_ID: LazyLock<Id> = LazyLock::new(|| Id::new("results"));
 static AUTOSIZE_ID: LazyLock<Id> = LazyLock::new(|| Id::new("autosize"));
 
+/// Which pane the popup shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pane {
+    /// The action list, with the highlighted row.
+    Actions(usize),
+    Detail,
+    Preferences,
+    /// The result list, or the session panel standing in for it.
+    List,
+}
+
+/// The pane a mode puts on screen. Only the result list is worth replacing with a session
+/// panel: the other panes are opened deliberately, and the preferences editor in particular
+/// stays useful — and is the only way back to the shortcuts — while the session is locked or
+/// signed out (FR-027).
+pub fn pane(mode: &Mode) -> Pane {
+    match mode {
+        Mode::Actions { selected, .. } => Pane::Actions(*selected),
+        Mode::Detail { .. } => Pane::Detail,
+        Mode::Preferences { .. } => Pane::Preferences,
+        Mode::List => Pane::List,
+    }
+}
+
+/// The caption lines a pane shows under its header: why the data may be out of date, then the
+/// inline notice left by the last action. Shared, because a pane that renders neither leaves a
+/// failed reveal or copy with nothing to show for it.
+pub fn notices(model: &Model) -> Vec<&str> {
+    let mut lines = Vec::with_capacity(2);
+    lines.extend(model.stale_notice());
+    lines.extend(model.view.notice.as_ref().map(|n| n.text.as_str()));
+    lines
+}
+
 /// The popup contents, framed like the COSMIC launcher.
 pub fn popup(model: &Model, now: i64) -> Element<'_, Message> {
-    let body = match &model.view.mode {
-        Mode::Actions { selected, .. } => actions::view(model, *selected),
-        Mode::Detail { .. } => detail::view(model, now),
-        Mode::List | Mode::Preferences { .. } => {
-            status::panel(model).unwrap_or_else(|| list::view(model))
-        }
+    let body = match pane(&model.view.mode) {
+        Pane::Actions(selected) => actions::view(model, selected),
+        Pane::Detail => detail::view(model, now),
+        Pane::Preferences => preferences::view(model),
+        Pane::List => status::panel(model).unwrap_or_else(|| list::view(model)),
     };
     let framed = container(body)
         .padding([16, 20])
@@ -50,4 +83,35 @@ pub fn popup(model: &Model, now: i64) -> Element<'_, Message> {
         .push(space::vertical().height(Length::Fixed(super::surface::TOP_MARGIN)))
         .push(framed);
     autosize::autosize(window, AUTOSIZE_ID.clone()).into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Pane, notices, pane};
+    use crate::core::state::{Mode, Model};
+
+    #[test]
+    fn the_preferences_editor_is_a_pane_of_its_own() {
+        assert_eq!(
+            pane(&Mode::Preferences { rebinding: None }),
+            Pane::Preferences,
+            "opening the editor must not land on the result list (FR-027)"
+        );
+        assert_eq!(pane(&Mode::List), Pane::List);
+    }
+
+    #[test]
+    fn a_pane_captions_the_stale_line_and_then_the_inline_notice() {
+        let mut model = Model::default();
+        model.notify("This item has no such field");
+        assert_eq!(notices(&model), ["This item has no such field"]);
+        model.data.stale = true;
+        assert_eq!(
+            notices(&model),
+            [
+                "Data may be out of date. Press F5 to refresh.",
+                "This item has no such field"
+            ]
+        );
+    }
 }

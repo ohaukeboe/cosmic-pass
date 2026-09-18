@@ -36,15 +36,22 @@ pub fn read_value(mut input: impl Read) -> std::io::Result<Option<Zeroizing<Vec<
     Ok((!buf.is_empty()).then_some(buf))
 }
 
+/// Slack between the parent's timeout and this watchdog. The parent starts its own timer only
+/// after the helper reports `ready`, so its deadline is the earlier of the two and it normally
+/// wins the race; a second of slack is enough for that, and keeps an orphaned secret within the
+/// second SC-005 allows. If the helper did take longer than that to become ready, it clears the
+/// selection itself — the parent then reports the job as ownership loss, but no secret lingers.
+const WATCHDOG_MARGIN: u64 = 1;
+
 /// How long the helper waits before exiting on its own, in case the parent died without
 /// killing it. Only secret copies are time-limited: a non-secret value stays on the clipboard
 /// until another client replaces it, like any normal copy.
 pub fn watchdog_delay(timeout: u64, secret: bool) -> Option<Duration> {
-    secret.then(|| Duration::from_secs(timeout.saturating_add(5)))
+    secret.then(|| Duration::from_secs(timeout.saturating_add(WATCHDOG_MARGIN)))
 }
 
 /// Serves stdin on the clipboard until ownership is lost. A secret copy also exits on its own
-/// `timeout + 5` s after start in case the parent died without killing it.
+/// one second after the timeout in case the parent died without killing it.
 pub fn main(timeout: u64, secret: bool) -> ExitCode {
     let value = match read_value(std::io::stdin().lock()) {
         Ok(Some(v)) => v,
@@ -141,7 +148,9 @@ mod tests {
 
     #[test]
     fn only_secret_copies_self_destruct() {
-        assert_eq!(watchdog_delay(90, true), Some(Duration::from_secs(95)));
+        // SC-005 allows one second past the timeout, so an orphaned helper must not outlive it
+        // by more than that.
+        assert_eq!(watchdog_delay(90, true), Some(Duration::from_secs(91)));
         // A username or website must survive: no timeout was requested for it.
         assert_eq!(watchdog_delay(90, false), None);
         assert_eq!(watchdog_delay(0, false), None);

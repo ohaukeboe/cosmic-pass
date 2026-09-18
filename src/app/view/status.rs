@@ -6,6 +6,7 @@ use cosmic::widget::{button, column, container, icon, text};
 
 use crate::app::Message;
 use crate::app::surface::WIDTH;
+use crate::config::Action;
 use crate::core::state::{Model, Msg, PASS_CLI_URL, SessionState};
 
 /// A full panel for session states that make the item list meaningless, if any.
@@ -65,15 +66,21 @@ pub fn panel(model: &Model) -> Option<Element<'_, Message>> {
         content = content
             .push(button::link(PASS_CLI_URL).on_press(Message::OpenUrl(PASS_CLI_URL.into())));
     }
+    // The panel has no focus ring (keyboard navigation is off), so each button names its chord.
     if model.can_start_login() {
-        content =
-            content.push(button::suggested("Sign in").on_press(Message::Core(Msg::StartLogin)));
+        content = content.push(
+            button::suggested(format!("Sign in ({})", model.prefs.chord(Action::SignIn)))
+                .on_press(Message::Core(Msg::StartLogin)),
+        );
     }
     if matches!(
         model.session,
         SessionState::Locked | SessionState::CliMissing | SessionState::Error(_)
     ) {
-        content = content.push(button::standard("Try again").on_press(Message::Core(Msg::Startup)));
+        content = content.push(
+            button::standard(format!("Try again ({})", model.prefs.chord(Action::Retry)))
+                .on_press(Message::Core(Msg::Startup)),
+        );
     }
 
     Some(

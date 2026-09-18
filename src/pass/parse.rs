@@ -255,6 +255,9 @@ struct CardBody {
     pin: NonEmpty,
 }
 
+/// Every member `pass-cli` emits for an identity. Only `full_name` and `email` are kept as
+/// values; the rest are personal data, so only their presence is recorded and the value is
+/// fetched on demand.
 #[derive(Deserialize, Default)]
 struct IdentityBody {
     #[serde(default, deserialize_with = "text")]
@@ -262,11 +265,76 @@ struct IdentityBody {
     #[serde(default, deserialize_with = "text")]
     email: Option<String>,
     #[serde(default)]
+    phone_number: NonEmpty,
+    #[serde(default)]
+    first_name: NonEmpty,
+    #[serde(default)]
+    middle_name: NonEmpty,
+    #[serde(default)]
+    last_name: NonEmpty,
+    #[serde(default)]
+    birthdate: NonEmpty,
+    #[serde(default)]
+    gender: NonEmpty,
+    #[serde(default)]
+    extra_personal_details: Vec<RawCustomField>,
+    #[serde(default)]
+    organization: NonEmpty,
+    #[serde(default)]
+    street_address: NonEmpty,
+    #[serde(default)]
+    zip_or_postal_code: NonEmpty,
+    #[serde(default)]
+    city: NonEmpty,
+    #[serde(default)]
+    state_or_province: NonEmpty,
+    #[serde(default)]
+    country_or_region: NonEmpty,
+    #[serde(default)]
+    floor: NonEmpty,
+    #[serde(default)]
+    county: NonEmpty,
+    #[serde(default)]
+    extra_address_details: Vec<RawCustomField>,
+    #[serde(default)]
     social_security_number: NonEmpty,
     #[serde(default)]
     passport_number: NonEmpty,
     #[serde(default)]
     license_number: NonEmpty,
+    #[serde(default)]
+    website: NonEmpty,
+    #[serde(default)]
+    x_handle: NonEmpty,
+    #[serde(default)]
+    second_phone_number: NonEmpty,
+    #[serde(default)]
+    linkedin: NonEmpty,
+    #[serde(default)]
+    reddit: NonEmpty,
+    #[serde(default)]
+    facebook: NonEmpty,
+    #[serde(default)]
+    yahoo: NonEmpty,
+    #[serde(default)]
+    instagram: NonEmpty,
+    #[serde(default)]
+    extra_contact_details: Vec<RawCustomField>,
+    #[serde(default)]
+    company: NonEmpty,
+    #[serde(default)]
+    job_title: NonEmpty,
+    #[serde(default)]
+    personal_website: NonEmpty,
+    #[serde(default)]
+    work_phone_number: NonEmpty,
+    #[serde(default)]
+    work_email: NonEmpty,
+    #[serde(default)]
+    extra_work_details: Vec<RawCustomField>,
+    /// Identities name their sections `extra_sections`; the other kinds call theirs `sections`.
+    #[serde(default, rename = "extra_sections", alias = "sections")]
+    sections: Vec<RawSection>,
 }
 
 #[derive(Deserialize, Default)]
@@ -402,6 +470,15 @@ fn plain_if(fields: &mut Vec<FieldRef>, value: &Option<String>, name: &str, labe
     }
 }
 
+/// Offers each present member as a non-secret field whose value is fetched on demand.
+fn unstored_if<const N: usize>(fields: &mut Vec<FieldRef>, members: [(NonEmpty, &str, &str); N]) {
+    for (present, name, label) in members {
+        if present.0 {
+            fields.push(FieldRef::unstored(name, label));
+        }
+    }
+}
+
 /// Field name and label for the `i`-th website of a login.
 ///
 /// The first one keeps the plain `url` name that the copy-website shortcut binds to; the
@@ -430,6 +507,108 @@ fn custom_fields(s: &mut ItemSummary, raw: Vec<RawCustomField>) {
 fn section_fields(s: &mut ItemSummary, sections: Vec<RawSection>) {
     for section in sections {
         custom_fields(s, section.section_fields);
+    }
+}
+
+impl IdentityBody {
+    /// Fills the summary in the order the Proton Pass UI groups identity members: personal
+    /// details, address, contact, then work, each followed by its own custom fields.
+    fn fill(self, s: &mut ItemSummary) {
+        let f = &mut s.fields;
+        plain_if(f, &self.full_name, "full_name", "Full name");
+        plain_if(f, &self.email, "email", "Email");
+        unstored_if(
+            f,
+            [
+                (self.phone_number, "phone_number", "Phone number"),
+                (self.first_name, "first_name", "First name"),
+                (self.middle_name, "middle_name", "Middle name"),
+                (self.last_name, "last_name", "Last name"),
+                (self.birthdate, "birthdate", "Birthdate"),
+                (self.gender, "gender", "Gender"),
+            ],
+        );
+        custom_fields(s, self.extra_personal_details);
+        unstored_if(
+            &mut s.fields,
+            [
+                (self.organization, "organization", "Organization"),
+                (self.street_address, "street_address", "Street address"),
+                (
+                    self.zip_or_postal_code,
+                    "zip_or_postal_code",
+                    "ZIP or postal code",
+                ),
+                (self.city, "city", "City"),
+                (
+                    self.state_or_province,
+                    "state_or_province",
+                    "State or province",
+                ),
+                (
+                    self.country_or_region,
+                    "country_or_region",
+                    "Country or region",
+                ),
+                (self.floor, "floor", "Floor"),
+                (self.county, "county", "County"),
+            ],
+        );
+        custom_fields(s, self.extra_address_details);
+        let f = &mut s.fields;
+        secret_if(
+            f,
+            self.social_security_number,
+            "social_security_number",
+            "Social security number",
+        );
+        secret_if(
+            f,
+            self.passport_number,
+            "passport_number",
+            "Passport number",
+        );
+        secret_if(f, self.license_number, "license_number", "License number");
+        unstored_if(
+            f,
+            [
+                (self.website, "website", "Website"),
+                (self.x_handle, "x_handle", "X handle"),
+                (
+                    self.second_phone_number,
+                    "second_phone_number",
+                    "Second phone number",
+                ),
+                (self.linkedin, "linkedin", "LinkedIn"),
+                (self.reddit, "reddit", "Reddit"),
+                (self.facebook, "facebook", "Facebook"),
+                (self.yahoo, "yahoo", "Yahoo"),
+                (self.instagram, "instagram", "Instagram"),
+            ],
+        );
+        custom_fields(s, self.extra_contact_details);
+        unstored_if(
+            &mut s.fields,
+            [
+                (self.company, "company", "Company"),
+                (self.job_title, "job_title", "Job title"),
+                (
+                    self.personal_website,
+                    "personal_website",
+                    "Personal website",
+                ),
+                (
+                    self.work_phone_number,
+                    "work_phone_number",
+                    "Work phone number",
+                ),
+                (self.work_email, "work_email", "Work email"),
+            ],
+        );
+        custom_fields(s, self.extra_work_details);
+        section_fields(s, self.sections);
+        s.email = self.email;
+        s.subtitle = self.full_name;
     }
 }
 
@@ -471,18 +650,7 @@ impl RawContent {
             }
             KindContent::Identity(b) => {
                 s.kind = ItemKind::Identity;
-                plain_if(f, &b.full_name, "full_name", "Full name");
-                plain_if(f, &b.email, "email", "Email");
-                secret_if(
-                    f,
-                    b.social_security_number,
-                    "social_security_number",
-                    "Social security number",
-                );
-                secret_if(f, b.passport_number, "passport_number", "Passport number");
-                secret_if(f, b.license_number, "license_number", "License number");
-                s.email = b.email;
-                s.subtitle = b.full_name;
+                b.fill(s);
             }
             KindContent::Wifi(b) => {
                 s.kind = ItemKind::Wifi;
@@ -602,6 +770,107 @@ mod tests {
         let items = synthetic_items();
         assert_eq!(items.len(), 11);
         assert!(items.iter().all(|i| i.key.item.0 != "login-old"));
+    }
+
+    /// `state` is the only reason the parser drops an item: any value other than `trashed`
+    /// (in any case) is kept, so a state `pass-cli` adds later still shows up.
+    #[test]
+    fn only_trashed_state_drops_an_item() {
+        let json = br#"{"items":[
+            {"id":"active","state":"Active"},
+            {"id":"trashed-capitalised","state":"Trashed"},
+            {"id":"trashed-lower","state":"trashed"},
+            {"id":"empty-state","state":""},
+            {"id":"no-state"},
+            {"id":"archived","state":"Archived"},
+            {"id":"inactive","state":"Inactive"}
+        ]}"#;
+        let items = parse_items(json, &ShareId("s".into()), "V").unwrap();
+        let ids: Vec<_> = items.iter().map(|i| i.key.item.0.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["active", "empty-state", "no-state", "archived", "inactive"]
+        );
+    }
+
+    /// Every identity member Proton Pass emits, as captured from a real vault.
+    fn identity_item() -> &'static [u8] {
+        br#"{"items":[{"id":"identity-full","state":"Active","modify_time":"2026-02-03T04:05:06",
+          "content":{"title":"Me","note":"","content":{"Identity":{
+            "full_name":"Fixture Person","email":"person@example.invalid",
+            "phone_number":"+1 555 0100","first_name":"Fixture","middle_name":"","last_name":"Person",
+            "birthdate":"1990-01-01","gender":"unspecified",
+            "extra_personal_details":[{"name":"Nickname","content":{"Text":"fix"}}],
+            "organization":"","street_address":"1 Fixture Road","zip_or_postal_code":"0001",
+            "city":"Town","state_or_province":"","country_or_region":"Countryland","floor":"","county":"",
+            "extra_address_details":[{"name":"Door code","content":{"Hidden":"SECRET-FIXTURE-door"}}],
+            "social_security_number":"SECRET-FIXTURE-ssn","passport_number":"","license_number":"",
+            "website":"https://example.invalid","x_handle":"@fixture","second_phone_number":"",
+            "linkedin":"","reddit":"","facebook":"","yahoo":"","instagram":"",
+            "extra_contact_details":[],
+            "company":"Fixture Inc","job_title":"Tester","personal_website":"",
+            "work_phone_number":"","work_email":"work@example.invalid","extra_work_details":[],
+            "extra_sections":[{"section_name":"Membership","section_fields":[
+              {"name":"Member id","content":{"Hidden":"SECRET-FIXTURE-member"}}]}]}},
+          "extra_fields":[]}}]}"#
+    }
+
+    #[test]
+    fn identity_offers_every_populated_member() {
+        let items = parse_items(identity_item(), &ShareId("share-a".into()), "Personal").unwrap();
+        let identity = find(&items, "identity-full");
+        let names: Vec<_> = identity.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "full_name",
+                "email",
+                "phone_number",
+                "first_name",
+                "last_name",
+                "birthdate",
+                "gender",
+                "Nickname",
+                "street_address",
+                "zip_or_postal_code",
+                "city",
+                "country_or_region",
+                "Door code",
+                "social_security_number",
+                "website",
+                "x_handle",
+                "company",
+                "job_title",
+                "work_email",
+                "Member id",
+            ],
+            "empty members must not be offered and the groups must stay in UI order"
+        );
+        assert_eq!(identity.subtitle.as_deref(), Some("Fixture Person"));
+        assert_eq!(identity.email.as_deref(), Some("person@example.invalid"));
+    }
+
+    #[test]
+    fn identity_members_are_fetched_on_demand_and_never_cached() {
+        let items = parse_items(identity_item(), &ShareId("share-a".into()), "Personal").unwrap();
+        let identity = find(&items, "identity-full");
+        // Only the two members the contract calls non-secret carry a cached value.
+        let cached: Vec<_> = identity
+            .fields
+            .iter()
+            .filter(|f| f.value.is_some())
+            .map(|f| f.name.as_str())
+            .collect();
+        assert_eq!(cached, ["full_name", "email"]);
+        assert!(
+            identity
+                .field("first_name")
+                .is_some_and(|f| !f.secret && f.value.is_none())
+        );
+        for name in ["social_security_number", "Door code", "Member id"] {
+            assert!(identity.field(name).is_some_and(|f| f.secret), "{name}");
+        }
+        assert_no_secrets(&items);
     }
 
     #[test]

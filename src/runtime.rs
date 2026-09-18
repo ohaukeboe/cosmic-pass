@@ -95,11 +95,22 @@ pub fn execute(effect: Effect, deps: &Deps, model: &Model) -> Step {
             future(async move { Some(Msg::SessionProbed(backend.account().await)) })
         }
         Effect::StartLogin => Step::Stream(login_stream(deps.backend.clone())),
-        Effect::FetchReveal { key, field, cancel } => {
+        Effect::FetchReveal {
+            key,
+            field,
+            index,
+            generation,
+            cancel,
+        } => {
             let backend = deps.backend.clone();
             future(async move {
                 let result = backend.get_field(key.clone(), field, cancel).await;
-                Some(Msg::RevealFetched { key, result })
+                Some(Msg::RevealFetched {
+                    key,
+                    index,
+                    generation,
+                    result,
+                })
             })
         }
         Effect::FetchTotp { key, cancel } => {

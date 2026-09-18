@@ -6,7 +6,7 @@ use cosmic::widget::{button, column, container, divider, icon, row, scrollable, 
 
 use crate::app::Message;
 use crate::app::surface::WIDTH;
-use crate::config::Action;
+use crate::config::{Action, CLIPBOARD_CLEAR_STEP};
 use crate::core::state::{Mode, Model, Msg};
 
 pub fn view(model: &Model) -> Element<'_, Message> {
@@ -31,13 +31,15 @@ pub fn view(model: &Model) -> Element<'_, Message> {
         .push(text::body("Clear copied secrets after"))
         .push(space::horizontal().width(Length::Fill))
         .push(
-            button::icon(icon::from_name("list-remove-symbolic"))
-                .on_press(Message::Core(Msg::AdjustClipboardClear(-10))),
+            button::icon(icon::from_name("list-remove-symbolic")).on_press(Message::Core(
+                Msg::AdjustClipboardClear(-CLIPBOARD_CLEAR_STEP),
+            )),
         )
         .push(text::body(format!("{} s", prefs.clipboard_clear_secs)))
         .push(
-            button::icon(icon::from_name("list-add-symbolic"))
-                .on_press(Message::Core(Msg::AdjustClipboardClear(10))),
+            button::icon(icon::from_name("list-add-symbolic")).on_press(Message::Core(
+                Msg::AdjustClipboardClear(CLIPBOARD_CLEAR_STEP),
+            )),
         );
 
     let mut shortcuts = column::with_capacity(Action::ALL.len()).spacing(2);
@@ -57,12 +59,17 @@ pub fn view(model: &Model) -> Element<'_, Message> {
         );
     }
 
-    let mut content = column::with_capacity(7)
+    let mut content = column::with_capacity(8)
         .spacing(12)
         .push(header)
         .push(timeout)
         .push(divider::horizontal::default())
-        .push(text::heading("Keyboard shortcuts"));
+        .push(text::heading("Keyboard shortcuts"))
+        .push(text::caption(
+            "Left/Right adjust the timeout · press a shortcut to rebind it · Ctrl+Shift+Delete resets",
+        ));
+    // Only the notice, not the shared caption pair: the stale line points at F5, which the
+    // editor rebinds rather than obeys, and nothing here shows item data anyway.
     if let Some(notice) = &model.view.notice {
         content = content.push(text::caption(notice.text.as_str()));
     }

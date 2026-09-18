@@ -2,6 +2,45 @@
 
 This file provides instructions and context for AI coding agents working on this project.
 
+This project uses **bd** (beads) for issue tracking. Run `bd prime` for full workflow context,
+and see the `beads` skill at `.agents/skills/beads/SKILL.md` (project install) or
+`~/.agents/skills/beads/SKILL.md` (global install) for workflow guidance.
+
+> **Architecture in one line:** Issues live in a local Dolt database
+> (`.beads/embeddeddolt/`); cross-machine sync uses `bd dolt push/pull` (a
+> git-compatible protocol), stored under `refs/dolt/data` on your git
+> remote — separate from `refs/heads/*` where your code lives.
+> `.beads/issues.jsonl` is a passive export, not the wire protocol.
+>
+> See [SYNC_CONCEPTS.md](https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md)
+> for the one-screen overview and anti-patterns (don't treat JSONL as the
+> source of truth; don't `bd import` during normal operation; don't
+> reach for third-party Dolt hosting before trying the default).
+
+## Non-Interactive Shell Commands
+
+**ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.
+
+Shell commands like `cp`, `mv`, and `rm` may be aliased to include `-i` (interactive) mode on some systems, causing the agent to hang indefinitely waiting for y/n input.
+
+**Use these forms instead:**
+```bash
+# Force overwrite without prompting
+cp -f source dest           # NOT: cp source dest
+mv -f source dest           # NOT: mv source dest
+rm -f file                  # NOT: rm file
+
+# For recursive operations
+rm -rf directory            # NOT: rm -r directory
+cp -rf source dest          # NOT: cp -r source dest
+```
+
+**Other commands that may prompt:**
+- `scp` - use `-o BatchMode=yes` for non-interactive
+- `ssh` - use `-o BatchMode=yes` to fail instead of prompting
+- `apt-get` - use `-y` flag
+- `brew` - use `HOMEBREW_NO_AUTO_UPDATE=1` env var
+
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:6cd5cc61 -->
 ## Beads Issue Tracker
 
@@ -56,7 +95,6 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 - Do not commit or push without clear authority from the active profile or the current user request.
 - If a required sync or push is blocked, stop and report the exact command and error.
 <!-- END BEADS INTEGRATION -->
-
 
 ## Build & Test
 

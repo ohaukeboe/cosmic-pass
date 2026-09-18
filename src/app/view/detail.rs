@@ -8,11 +8,15 @@ use secrecy::ExposeSecret;
 use crate::app::Message;
 use crate::app::surface::WIDTH;
 use crate::config::Action;
-use crate::core::actions::{CopySource, primary_action};
 use crate::core::state::{Model, Msg};
 use crate::model::{FieldRef, ItemKind};
 
 const MASK: &str = "••••••••";
+/// Stands in for a value line with nothing to show, as the action list does: custom fields of
+/// variant `Text` are cached by name only, so there is no value to render.
+const NO_VALUE: &str = "—";
+/// Width of the label column; the value column starts after it.
+const LABEL_WIDTH: f32 = 140.0;
 
 fn kind_label(kind: &ItemKind) -> &str {
     match kind {
@@ -28,36 +32,33 @@ fn kind_label(kind: &ItemKind) -> &str {
     }
 }
 
-/// The `(label, shown value)` pairs of the detail pane, in display order. Secret values are
-/// masked unless revealed. Every website is already a field of its own, so `urls` is not
-/// rendered separately.
+/// The `(label, shown value)` pairs of the detail pane, in display order. A secret is masked
+/// unless it is the one the pane currently reveals. Every website is already a field of its
+/// own, so `urls` is not rendered separately.
 pub fn rows(model: &Model, now: i64) -> Vec<(String, String)> {
     let _ = now;
     let Some(item) = model.target_item() else {
         return Vec::new();
     };
-    let primary = match primary_action(item) {
-        Some(CopySource::Field(f)) if f.secret => Some(f.name),
-        _ => None,
-    };
     item.fields
         .iter()
+        .enumerate()
         .map(
-            |FieldRef {
-                 name,
-                 label,
-                 value,
-                 secret,
-             }| {
+            |(
+                index,
+                FieldRef {
+                    label,
+                    value,
+                    secret,
+                    ..
+                },
+            )| {
                 let shown = match (value, *secret) {
                     (Some(v), false) => v.clone(),
-                    (_, true) if primary.as_deref() == Some(name.as_str()) => model
-                        .view
-                        .revealed
-                        .as_ref()
+                    (_, true) => model
+                        .revealed_value(index)
                         .map_or_else(|| MASK.to_owned(), |v| v.expose_secret().to_owned()),
-                    (_, true) => MASK.to_owned(),
-                    (None, false) => "—".to_owned(),
+                    (None, false) => NO_VALUE.to_owned(),
                 };
                 (label.clone(), shown)
             },
@@ -68,7 +69,7 @@ pub fn rows(model: &Model, now: i64) -> Vec<(String, String)> {
 fn field_row_owned<'a>(label: String, value: String) -> Element<'a, Message> {
     row::with_capacity(3)
         .spacing(12)
-        .push(text::caption(label).width(Length::Fixed(140.0)))
+        .push(text::caption(label).width(Length::Fixed(LABEL_WIDTH)))
         .push(text::body(value))
         .into()
 }
@@ -76,7 +77,7 @@ fn field_row_owned<'a>(label: String, value: String) -> Element<'a, Message> {
 fn field_row<'a>(label: &'a str, value: String) -> Element<'a, Message> {
     row::with_capacity(3)
         .spacing(12)
-        .push(text::caption(label).width(Length::Fixed(140.0)))
+        .push(text::caption(label).width(Length::Fixed(LABEL_WIDTH)))
         .push(text::body(value))
         .into()
 }
@@ -112,14 +113,20 @@ pub fn view(model: &Model, now: i64) -> Element<'_, Message> {
     if let Some(totp) = &model.view.totp {
         let remaining = totp.remaining(now);
         #[allow(clippy::cast_precision_loss)]
-        let bar = progress_bar::determinate_linear(remaining as f32 / totp.period.max(1) as f32);
+        let bar = row::with_capacity(2)
+            .spacing(12)
+            .push(space::horizontal().width(Length::Fixed(LABEL_WIDTH)))
+            .push(
+                progress_bar::determinate_linear(remaining as f32 / totp.period.max(1) as f32)
+                    .width(Length::Fill),
+            );
         body = body
             .push(divider::horizontal::light())
             .push(
                 row::with_capacity(3)
                     .spacing(12)
                     .align_y(Alignment::Center)
-                    .push(text::caption("One-time code").width(Length::Fixed(140.0)))
+                    .push(text::caption("One-time code").width(Length::Fixed(LABEL_WIDTH)))
                     .push(text::title3(totp.code.expose_secret().to_owned()))
                     .push(text::caption(format!("{remaining}s"))),
             )
@@ -128,20 +135,27 @@ pub fn view(model: &Model, now: i64) -> Element<'_, Message> {
         body = body.push(field_row("One-time code", "…".to_owned()));
     }
 
-    let has_secret = matches!(primary_action(item), Some(CopySource::Field(f)) if f.secret);
-    let reveal_hint = if has_secret {
-        format!(
+    // Reveal walks the secret fields one at a time, so say so when there is more than one.
+    let secrets = item.fields.iter().filter(|f| f.secret).count();
+    let reveal_hint = match secrets {
+        0 => format!("{} to copy", model.prefs.chord(Action::CopyPrimary)),
+        1 => format!(
             "{} to reveal · {} to copy",
             model.prefs.chord(Action::Reveal),
             model.prefs.chord(Action::CopyPrimary)
-        )
-    } else {
-        format!("{} to copy", model.prefs.chord(Action::CopyPrimary))
+        ),
+        _ => format!(
+            "{} to reveal each secret in turn · {} to copy",
+            model.prefs.chord(Action::Reveal),
+            model.prefs.chord(Action::CopyPrimary)
+        ),
     };
 
-    let content = column::with_capacity(4)
-        .spacing(12)
-        .push(header)
+    let mut content = column::with_capacity(5).spacing(12).push(header);
+    for line in super::notices(model) {
+        content = content.push(text::caption(line));
+    }
+    let content = content
         .push(divider::horizontal::default())
         .push(body)
         .push(text::caption(reveal_hint));

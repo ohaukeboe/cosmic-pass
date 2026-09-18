@@ -108,6 +108,19 @@ async fn copy_totp_without_code_shows_notice() {
 }
 
 #[tokio::test]
+async fn the_action_list_shows_why_a_copy_did_nothing() {
+    // Acceptance scenario 4: the message has to reach the pane the user is looking at.
+    let mut h = opened("mail").await;
+    h.send(Msg::OpenActions).await;
+    h.send(Msg::CopyTotp).await;
+    assert!(h.clipboard.copies().is_empty());
+    assert!(
+        cosmic_pass::app::view::notices(&h.model).contains(&"This item has no one-time code"),
+        "the action pane captions the notice"
+    );
+}
+
+#[tokio::test]
 async fn copy_url_needs_no_backend_call() {
     let mut h = opened("github").await;
     h.send(Msg::CopyUrl).await;

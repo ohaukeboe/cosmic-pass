@@ -4,7 +4,7 @@ use cosmic::Element;
 use cosmic::font::Font;
 use cosmic::iced::advanced::text::{LineHeight, Span};
 use cosmic::iced::widget::rich_text;
-use cosmic::iced::{Alignment, Length};
+use cosmic::iced::{Alignment, Border, Color, Length, Shadow};
 use cosmic::widget::{self, button, column, container, icon, row, scrollable, text, text_input};
 
 use crate::app::Message;
@@ -20,6 +20,41 @@ const BODY_LINE_HEIGHT: f32 = 21.0;
 /// Corner radii for a selectable row.
 pub fn row_radii() -> [f32; 4] {
     cosmic::theme::active().cosmic().corner_radii.radius_s
+}
+
+/// Frames a selectable row so the highlight carries a second cue besides the fill. The
+/// `ListItem` selected background alone measures about 1.9:1 against the popup, short of
+/// the 3:1 guideline for non-text indicators (FR-004); an accent border clears it. The
+/// frame is applied to every row so that gaining it does not shift the layout.
+pub fn highlighted<'a>(
+    row: impl Into<Element<'a, Message>>,
+    selected: bool,
+) -> Element<'a, Message> {
+    container(row.into())
+        .width(Length::Fill)
+        // The button paints its own background over the whole frame, so the border needs a
+        // pixel of its own outside it; every row reserves it, selected or not.
+        .padding(1)
+        .class(cosmic::theme::Container::custom(move |theme| {
+            let t = theme.cosmic();
+            container::Style {
+                text_color: None,
+                icon_color: None,
+                background: None,
+                border: Border {
+                    radius: t.corner_radii.radius_s.into(),
+                    width: 1.0,
+                    color: if selected {
+                        t.accent_color().into()
+                    } else {
+                        Color::TRANSPARENT
+                    },
+                },
+                shadow: Shadow::default(),
+                snap: true,
+            }
+        }))
+        .into()
 }
 
 pub fn icon_name(kind: &ItemKind) -> &'static str {
@@ -109,12 +144,8 @@ pub fn view(model: &Model) -> Element<'_, Message> {
         .spacing(8)
         .push(search_field(model));
 
-    if let Some(status) = model.stale_notice() {
-        content = content.push(text::caption(status));
-    }
-
-    if let Some(notice) = &model.view.notice {
-        content = content.push(text::caption(notice.text.as_str()));
+    for line in super::notices(model) {
+        content = content.push(text::caption(line));
     }
 
     if model.view.results.is_empty() {
@@ -152,14 +183,15 @@ pub fn view(model: &Model) -> Element<'_, Message> {
                     line = line.push(icon::from_name("view-refresh-symbolic").size(16));
                 }
                 line = line.push(text::caption(item.vault_name.as_str()));
-                button::custom(line)
+                let selected = i == model.view.selected;
+                let row = button::custom(line)
                     // ListItem paints a selected state; MenuItem does not.
                     .class(cosmic::theme::Button::ListItem(row_radii()))
-                    .selected(i == model.view.selected)
+                    .selected(selected)
                     .width(Length::Fill)
                     .padding([6, 12])
-                    .on_press(Message::RowPressed(i))
-                    .into()
+                    .on_press(Message::RowPressed(i));
+                highlighted(row, selected)
             });
         content = content.push(
             scrollable(column::with_children(rows).spacing(2))

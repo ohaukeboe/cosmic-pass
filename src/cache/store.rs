@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use super::CacheError;
 use super::crypto;
-use super::keystore::KeyStore;
+use super::keystore::{KeyState, KeyStore};
 use crate::model::{CACHE_FORMAT_VERSION, CacheFile};
 
 const FILE_NAME: &str = "cache.bin";
@@ -90,7 +90,8 @@ impl CacheStore {
         self.inner.writes.load(Ordering::Relaxed)
     }
 
-    /// Reads the cache. Unreadable or incompatible files are deleted. Never creates a key.
+    /// Reads the cache. Unreadable or incompatible files are deleted, but a file that is merely
+    /// out of reach is kept (FR-024a). Never creates a key.
     pub async fn load(&self) -> Option<CacheFile> {
         let path = self.path();
         let raw = match tokio::fs::read(&path).await {
@@ -101,10 +102,16 @@ impl CacheStore {
                 return None;
             }
         };
-        let Some(key) = self.inner.keys.key(false).await else {
-            // Without the key the file can never be read again.
-            remove(&path).await;
-            return None;
+        let key = match self.inner.keys.key(false).await {
+            Ok(key) => key,
+            // The keyring may hold the key still and hand it over once it unlocks, so leave the
+            // file alone rather than destroy a cache that is only temporarily out of reach.
+            Err(KeyState::Unavailable) => return None,
+            Err(KeyState::Missing) => {
+                // Without the key the file can never be read again.
+                remove(&path).await;
+                return None;
+            }
         };
         let decoded = crypto::open(&key, &raw).and_then(|plain| {
             postcard::from_bytes::<CacheFile>(&plain).map_err(|_| CacheError::Corrupt)
@@ -121,7 +128,7 @@ impl CacheStore {
 
     /// Encrypts and writes the cache atomically. Does nothing without a keyring (FR-024a).
     pub async fn save(&self, file: &CacheFile) -> Result<(), CacheError> {
-        let Some(key) = self.inner.keys.key(true).await else {
+        let Ok(key) = self.inner.keys.key(true).await else {
             return Ok(());
         };
         let plain = zeroize::Zeroizing::new(postcard::to_allocvec(file).map_err(io)?);

@@ -52,6 +52,11 @@ libcosmic's requirement)
 - Test runner and coverage: `cargo nextest`, `cargo llvm-cov`
 - Snapshot tests: `insta`
 - Integration tests: a fake `pass-cli` shell script
+- Clipboard helper lifecycle: in-crate tests in `src/clipboard/mod.rs` against
+  `tests/fixtures/fake-clipboard-serve` (no compositor). They stay in-crate rather than under
+  `tests/` because they assert the private job state (`HelperClipboard::lock`, `Job::end`) that
+  distinguishes a replaced job from a lost selection; exporting it only for a `tests/` binary
+  would widen the public API for no caller.
 - UI tests: `iced_test` (pop-os fork, same rev), if compatible (research V2)
 
 **Target Platform**: Linux, COSMIC desktop (cosmic-comp) on Wayland; non-sandboxed install
@@ -157,11 +162,11 @@ src/
 
 tests/
 ├── fixtures/
-│   ├── fake-pass-cli      # POSIX sh; behavior via FAKE_* env vars
-│   └── pass-cli/          # redacted real JSON captures (V1)
+│   ├── fake-pass-cli          # POSIX sh; behavior via FAKE_* env vars
+│   ├── fake-clipboard-serve   # POSIX sh; behavior via FAKE_CLIP_* env vars
+│   └── pass-cli/              # redacted real JSON captures (V1)
 ├── pass_cli_integration.rs    # PassCli against fake binary: parsing, errors, timeouts
 ├── cache_integration.rs       # encrypt/persist/reload, account switch, no-secret-bytes
-├── clipboard_integration.rs   # helper lifecycle with a fake serve binary (no compositor)
 ├── story1_copy_password.rs    # acceptance: controller + fakes
 ├── story2_other_fields.rs
 ├── story3_detail_pane.rs
@@ -187,3 +192,4 @@ does not need several crates (Principle IV).
 | 1 | Story acceptance tests stop at the app controller, not the real compositor (Principle III "end to end") | Layer-shell focus and Wayland data-control need a live COSMIC session; no headless compositor harness exists for cosmic-comp | Full compositor-driven E2E would need a nested cosmic-comp in CI, which is unsupported. Covered by scripted manual checks in quickstart V2–V4. For the same reason `src/main.rs`, `src/app/mod.rs`, `src/app/surface.rs`, and `src/app/view/` are excluded from the coverage gate; keep logic out of them |
 | 2 | Clipboard helper subprocess (`clipboard-serve`) | Clipboard must outlive the hidden window, carry the password-manager hint, and be cleared only while still owned (FR-015/016) | Toolkit clipboard dies with window focus; `arboard` `.wait()` cannot be cancelled; a hand-written Wayland client is more code |
 | 3 | Encrypted on-disk cache + keyring dependency | User chose instant results after login/reboot without exposing account metadata (FR-024) | In-memory only was offered and declined; plaintext cache leaks which sites the user has accounts at |
+| 4 | Every metadata refresh runs `pass-cli item list --show-secrets`, so secrets enter the process on refresh, not only on user request (FR-014) | Plain `item list` omits username, URLs and the TOTP indicator, which search and the action list need (research R4, [contracts/pass-cli.md](./contracts/pass-cli.md)); without them the popup could not rank or label items | Listing plain and fetching the missing metadata per item would run one `pass-cli` process per item (thousands per refresh) and still expose the same values. Mitigated instead: the raw stdout buffer is `Zeroizing` in `src/pass/runner.rs`, `src/pass/parse.rs` drops every secret field while parsing, and nothing secret reaches `ItemSummary`, the cache, or a log |

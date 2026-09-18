@@ -38,10 +38,14 @@ pub enum Effect {
     LoadCache,
     DeleteCache,
     StartLogin,
-    /// Fetch a secret field for the detail pane.
+    /// Fetch a secret field for the detail pane. `index` is the field's position in the
+    /// item's fields and `generation` identifies this fetch; the result carries both back so
+    /// the pane can tell whose value it is.
     FetchReveal {
         key: ItemKey,
         field: String,
+        index: usize,
+        generation: u64,
         cancel: CancellationToken,
     },
     /// Fetch one-time codes for the detail pane.

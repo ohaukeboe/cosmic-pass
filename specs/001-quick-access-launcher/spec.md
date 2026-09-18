@@ -140,8 +140,10 @@ with an action to start sign-in is shown.
 
 - **FR-001**: Users MUST be able to open and close the quick-access window with a single
   system-wide keyboard shortcut.
-- **FR-002**: The window MUST open centered on the active display, above other windows, with
-  keyboard focus in the search field.
+- **FR-002**: The window MUST open on the active display, above other windows, with keyboard
+  focus in the search field. It MUST be horizontally centered and sit a fixed distance below
+  the top edge of that display (amended 2026-09-18; a height-proportional offset was dropped
+  because the app never learns which output the window landed on — see research R2).
 - **FR-003**: The window MUST close on Escape, on loss of focus, and after a successful copy.
   Closing MUST clear the search text and any revealed secrets.
 - **FR-004**: All actions MUST be reachable by keyboard alone. Mouse use MUST also work for

@@ -20,10 +20,12 @@ pub enum Action {
     Reveal,
     Refresh,
     Preferences,
+    SignIn,
+    Retry,
 }
 
 impl Action {
-    pub const ALL: [Action; 9] = [
+    pub const ALL: [Action; 11] = [
         Action::CopyPrimary,
         Action::CopyUsername,
         Action::CopyTotp,
@@ -33,6 +35,8 @@ impl Action {
         Action::Reveal,
         Action::Refresh,
         Action::Preferences,
+        Action::SignIn,
+        Action::Retry,
     ];
 
     pub fn label(self) -> &'static str {
@@ -46,6 +50,8 @@ impl Action {
             Action::Reveal => "Reveal secrets",
             Action::Refresh => "Refresh",
             Action::Preferences => "Preferences",
+            Action::SignIn => "Sign in",
+            Action::Retry => "Try again",
         }
     }
 
@@ -60,6 +66,8 @@ impl Action {
             Action::Reveal => KeyChord::new(&[Modifier::Ctrl], "r"),
             Action::Refresh => KeyChord::new(&[], "F5"),
             Action::Preferences => KeyChord::new(&[Modifier::Ctrl], ","),
+            Action::SignIn => KeyChord::new(&[Modifier::Ctrl, Modifier::Shift], "s"),
+            Action::Retry => KeyChord::new(&[Modifier::Ctrl, Modifier::Shift], "r"),
         }
     }
 }
@@ -122,6 +130,8 @@ impl std::fmt::Display for KeyChord {
 }
 
 pub const CLIPBOARD_CLEAR_RANGE: std::ops::RangeInclusive<u32> = 10..=600;
+/// How much one press of the timeout stepper (button or key) changes the value.
+pub const CLIPBOARD_CLEAR_STEP: i64 = 10;
 pub const REFRESH_STALE_RANGE: std::ops::RangeInclusive<u32> = 30..=86_400;
 /// Each rendered row costs layout and drawing time, so the default is small; raise it in
 /// the config file if you prefer a longer list.
@@ -313,10 +323,49 @@ mod tests {
     }
 
     #[test]
+    fn status_actions_have_distinct_defaults() {
+        let p = Preferences::default();
+        assert_eq!(
+            p.chord(Action::SignIn),
+            KeyChord::new(&[Modifier::Ctrl, Modifier::Shift], "s")
+        );
+        assert_eq!(
+            p.chord(Action::Retry),
+            KeyChord::new(&[Modifier::Ctrl, Modifier::Shift], "r")
+        );
+        assert_eq!(p.action_for(&[Modifier::Ctrl], "r"), Some(Action::Reveal));
+        assert_eq!(
+            p.action_for(&[Modifier::Ctrl, Modifier::Shift], "R"),
+            Some(Action::Retry)
+        );
+    }
+
+    /// Preferences stored before the status actions existed must still load.
+    #[test]
+    fn older_stored_shortcuts_gain_the_new_actions() {
+        let stored = r#"{"copy_primary":{"modifiers":[],"key":"Enter"},"refresh":{"modifiers":[],"key":"F7"}}"#;
+        let shortcuts: BTreeMap<Action, KeyChord> = serde_json::from_str(stored).unwrap();
+        let p = Preferences {
+            shortcuts,
+            ..Preferences::default()
+        }
+        .validated();
+        assert_eq!(p.chord(Action::Refresh), KeyChord::new(&[], "F7"));
+        assert_eq!(p.shortcuts.len(), Action::ALL.len());
+        assert_eq!(
+            p.chord(Action::SignIn),
+            Action::SignIn.default_chord(),
+            "missing action falls back to its default"
+        );
+    }
+
+    #[test]
     fn chords_round_trip_through_ron_like_serde() {
         let p = Preferences::default();
         let json = serde_json::to_string(&p.shortcuts).unwrap();
         assert!(json.contains("\"copy_primary\""));
+        assert!(json.contains("\"sign_in\""));
+        assert!(json.contains("\"retry\""));
         let back: BTreeMap<Action, KeyChord> = serde_json::from_str(&json).unwrap();
         assert_eq!(back, p.shortcuts);
     }

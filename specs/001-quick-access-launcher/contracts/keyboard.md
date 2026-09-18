@@ -19,6 +19,8 @@ Preferences (FR-027, [config.md](./config.md)). Defaults below.
 | `Ctrl+I` | Open detail pane | yes (`open_detail`) |
 | `F5` | Refresh data | yes (`refresh`) |
 | `Ctrl+,` | Open preferences | yes (`preferences`) |
+| `Ctrl+Shift+S` | Sign in to Proton Pass (status panel) | yes (`sign_in`) |
+| `Ctrl+Shift+R` | Retry after an error, lock, or missing `pass-cli` (status panel) | yes (`retry`) |
 | `Escape` | If a fetch is pending: cancel it. Else: close window | no |
 
 When the requested field is missing (e.g. no TOTP), show an inline notice for 3 s and leave
@@ -44,6 +46,29 @@ Shows title, vault, kind, username, websites, masked password, TOTP code with co
 | `Ctrl+R` | Toggle reveal of secret fields | yes (`reveal`) |
 | action chords from list mode | Copy, close window | yes |
 | `Escape` | Back to list mode (drops revealed values) | no |
+
+The status panel replaces the result list while the session is signed out, locked, in error,
+or `pass-cli` is missing. Its buttons carry the same two chords, which are ignored when the
+panel is not shown (signing in twice, or refreshing a healthy session, does nothing).
+
+## Preferences mode
+
+The editor has no focus ring — Tab traversal is off — so every control has a chord. The list
+of shortcut rows is not a selectable list: a row is reached by pressing the chord it shows.
+
+| Key | Action | Configurable |
+|-----|--------|--------------|
+| `Right`, `Up`, `+`, `=` | Clipboard timeout +10 s | no |
+| `Left`, `Down`, `-`, `_` | Clipboard timeout −10 s | no |
+| any bound chord (e.g. `Ctrl+U`) | Start rebinding that action's row | no |
+| `Ctrl+Shift+Delete` | Restore every shortcut to its default | no |
+| `Escape` | Back to list mode | no |
+
+`Page Up` / `Page Down` and the list-navigation chords (`Ctrl+N`, `Ctrl+P`, …) do nothing
+here: the result list is hidden, so its selection must not move.
+
+While a row waits for its new chord ("Press keys…"), capture takes precedence: every key but
+`Escape` (cancel) and a lone modifier becomes the new binding, including the keys above.
 
 ## Mouse
 
