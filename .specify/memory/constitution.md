@@ -79,8 +79,11 @@ maintainers from undoing deliberate decisions.
 ## Quality Standards
 
 - **Tooling**: The project MUST define single commands for format, lint, type-check, test, and
-  coverage, documented in `CLAUDE.md` / `AGENTS.md` under "Build & Test".
-  TODO(TECH_STACK): concrete tools to be selected in the first feature plan.
+  coverage, documented in `CLAUDE.md` / `AGENTS.md` under "Build & Test". Current commands:
+  `just fmt` (rustfmt), `just lint` (clippy, warnings as errors; also type-checks), `just test`
+  (cargo nextest), `just cov` (cargo llvm-cov, 80% line floor), and `just check` (all of them).
+  Files that can only run against a live compositor may be excluded from the coverage floor only
+  when a plan's Complexity Tracking justifies it; they MUST contain no testable logic.
 - **Reproducible environment**: The development environment MUST be reproducible from the
   repository (currently `shell.nix` + `.envrc`). All required tools MUST be declared there.
 - **Automation**: Every quality gate in this constitution MUST be runnable locally with one
@@ -124,4 +127,4 @@ maintainers from undoing deliberate decisions.
   justification. The constitution SHOULD be reviewed for relevance at least once per quarter.
 - Runtime development guidance lives in `CLAUDE.md` and `AGENTS.md`.
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-17 | **Last Amended**: 2026-09-17
+**Version**: 1.0.1 | **Ratified**: 2026-09-17 | **Last Amended**: 2026-09-17
