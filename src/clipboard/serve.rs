@@ -36,8 +36,15 @@ pub fn read_value(mut input: impl Read) -> std::io::Result<Option<Zeroizing<Vec<
     Ok((!buf.is_empty()).then_some(buf))
 }
 
-/// Serves stdin on the clipboard until ownership is lost. Exits on its own `timeout + 5` s
-/// after start in case the parent died without killing it.
+/// How long the helper waits before exiting on its own, in case the parent died without
+/// killing it. Only secret copies are time-limited: a non-secret value stays on the clipboard
+/// until another client replaces it, like any normal copy.
+pub fn watchdog_delay(timeout: u64, secret: bool) -> Option<Duration> {
+    secret.then(|| Duration::from_secs(timeout.saturating_add(5)))
+}
+
+/// Serves stdin on the clipboard until ownership is lost. A secret copy also exits on its own
+/// `timeout + 5` s after start in case the parent died without killing it.
 pub fn main(timeout: u64, secret: bool) -> ExitCode {
     let value = match read_value(std::io::stdin().lock()) {
         Ok(Some(v)) => v,
@@ -48,10 +55,12 @@ pub fn main(timeout: u64, secret: bool) -> ExitCode {
         }
     };
 
-    std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_secs(timeout.saturating_add(5)));
-        std::process::exit(0);
-    });
+    if let Some(delay) = watchdog_delay(timeout, secret) {
+        std::thread::spawn(move || {
+            std::thread::sleep(delay);
+            std::process::exit(0);
+        });
+    }
 
     use wl_clipboard_rs::copy::{self, MimeSource, MimeType, Options, ServeRequests, Source};
     let sources = offers(secret)
@@ -128,6 +137,14 @@ mod tests {
     fn empty_input_is_none() {
         assert!(read_value(&b""[..]).unwrap().is_none());
         assert_eq!(read_value(&b"abc"[..]).unwrap().unwrap().as_slice(), b"abc");
+    }
+
+    #[test]
+    fn only_secret_copies_self_destruct() {
+        assert_eq!(watchdog_delay(90, true), Some(Duration::from_secs(95)));
+        // A username or website must survive: no timeout was requested for it.
+        assert_eq!(watchdog_delay(90, false), None);
+        assert_eq!(watchdog_delay(0, false), None);
     }
 
     #[test]

@@ -37,6 +37,23 @@ pub trait Clipboard: Send + Sync {
     ) -> BoxFuture<'_, Result<(), ClipboardError>>;
 }
 
+/// Arguments passed to `clipboard-serve` for one copy, after the subcommand name.
+///
+/// `--timeout` is required by the argument parser and is always passed; only a secret copy acts
+/// on it (see [`serve::watchdog_delay`]), so a username or website stays on the clipboard until
+/// another client replaces it. `cli::tests::spawned_helper_argv_parses` checks this against the
+/// real parser, which a fake-helper test cannot.
+pub fn helper_args(secret: bool, clear_after: std::time::Duration) -> Vec<String> {
+    let mut args = vec![
+        "--timeout".to_owned(),
+        clear_after.as_secs().max(1).to_string(),
+    ];
+    if secret {
+        args.push("--secret".to_owned());
+    }
+    args
+}
+
 /// How a copy job ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JobEnd {
@@ -111,12 +128,7 @@ impl HelperClipboard {
         }
 
         let mut cmd = tokio::process::Command::new(&self.program);
-        cmd.args(&self.args)
-            .arg("--timeout")
-            .arg(clear_after.as_secs().max(1).to_string());
-        if secret {
-            cmd.arg("--secret");
-        }
+        cmd.args(&self.args).args(helper_args(secret, clear_after));
         let mut child = cmd
             .envs(self.env.iter().map(|(k, v)| (k, v)))
             .stdin(std::process::Stdio::piped())

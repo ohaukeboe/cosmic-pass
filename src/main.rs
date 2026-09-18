@@ -1,36 +1,8 @@
 //! `cosmic-pass` binary entry point.
 
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use cosmic_pass::app::{self, Flags, RemoteAction};
-
-/// Quick-access popup for Proton Pass on COSMIC.
-#[derive(Parser, Debug)]
-#[command(version, about)]
-struct Cli {
-    /// Start in the background without showing the window.
-    #[arg(long)]
-    background: bool,
-    #[command(subcommand)]
-    command: Option<Command>,
-}
-
-#[derive(Subcommand, Debug)]
-enum Command {
-    /// Show the window.
-    Show,
-    /// Hide the window.
-    Hide,
-    /// Refresh items in the background.
-    Refresh,
-    /// Internal: serve a value from stdin on the clipboard.
-    #[command(hide = true)]
-    ClipboardServe {
-        #[arg(long)]
-        timeout: u64,
-        #[arg(long)]
-        secret: bool,
-    },
-}
+use cosmic_pass::cli::{Cli, Command};
 
 fn main() -> std::process::ExitCode {
     tracing_subscriber::fmt()
