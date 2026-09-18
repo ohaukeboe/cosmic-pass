@@ -132,7 +132,9 @@ pub struct ItemSummary {
     pub title: String,
     pub username: Option<String>,
     pub email: Option<String>,
-    /// Secondary line: username/email, card holder, identity name, or SSID.
+    /// Secondary line: username/email, card holder, identity name, or SSID. `None` for
+    /// notes, aliases, SSH keys, and custom items, whose only distinguishing content is
+    /// secret.
     pub subtitle: Option<String>,
     pub urls: Vec<String>,
     /// Names of fields that produce one-time codes (`totp_uri`, custom TOTP names).

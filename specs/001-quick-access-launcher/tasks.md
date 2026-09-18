@@ -341,3 +341,17 @@ then: T071 crypto impl   T072 keystore impl
   with tasks as children before starting.
 - Commit after each task or logical group, using Conventional Commits, only with user approval.
 - Tasks marked **needs the user**: T011, T083.
+
+---
+
+## Phase 9: Convergence
+
+**Purpose**: Close gaps found by `/speckit-converge` between the artifacts and the code.
+
+- [ ] T085 Bold the matched characters of result titles in `src/app/view/list.rs` using the `title_indices` already returned by `src/core/search.rs` (rich text spans) per tasks T033 / FR-008 (partial)
+- [ ] T086 Offer every website of an item in the action list: keep all URLs as fields in `src/pass/parse.rs` (`url`, `url2`, … or one entry per URL) and list them in `all_actions` in `src/core/actions.rs` per spec Edge Cases "Item has multiple websites or multiple TOTP fields" (partial)
+- [ ] T087 Report a network failure distinctly: track the last refresh error in `src/core/state.rs` and show "Can't reach Proton Pass — showing saved items" in the stale indicator in `src/app/view/list.rs`, with a reducer test per FR-020 (partial)
+- [x] T088 Add a `LICENSE` file matching the `GPL-3.0-only` declared in `Cargo.toml` and `data/io.github.ohaukeboe.CosmicPass.metainfo.xml`, or change both declarations to the license the maintainer chooses per Constitution V (missing)
+- [ ] T089 Measure window-open latency for SC-001: log the elapsed time from `Msg::Toggle`/`dbus_activation` to the layer surface being ready in `src/app/mod.rs` at debug level, and record the measured p95 in `specs/001-quick-access-launcher/research.md` during quickstart V2 per SC-001 (missing)
+- [ ] T090 Derive the popup top margin from the active output height (~20%) instead of the fixed `TOP_MARGIN` in `src/app/surface.rs`, or amend plan R2 to state the fixed offset per plan R2 / tasks T031 (partial)
+- [x] T091 Decide the secondary line for note items in `src/pass/parse.rs`: either a non-secret preview source or a recorded decision in `specs/001-quick-access-launcher/data-model.md` that notes have none per FR-008 (partial)

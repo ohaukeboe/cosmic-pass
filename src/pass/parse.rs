@@ -639,6 +639,8 @@ mod tests {
         let note = find(&items, "note-wifi-codes");
         assert_eq!(note.kind, ItemKind::Note);
         assert!(note.field("note").is_some());
+        // Notes show the title alone: the body is secret, so there is no preview to show.
+        assert_eq!(note.subtitle, None);
 
         let card = find(&items, "card-visa");
         assert_eq!(card.kind, ItemKind::CreditCard);

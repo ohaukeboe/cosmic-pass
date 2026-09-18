@@ -37,7 +37,7 @@ Unknown kinds from newer `pass-cli` versions are kept and shown with a generic i
 | `title` | `String` | Required; empty titles shown as "(untitled)". |
 | `username` | `Option<String>` | Login username (empty strings become `None`). |
 | `email` | `Option<String>` | Login or identity email. |
-| `subtitle` | `Option<String>` | Username (else email) for logins, card holder for cards, full name for identities, SSID for Wi-Fi. Never note content or any secret. |
+| `subtitle` | `Option<String>` | Username (else email) for logins, card holder for cards, full name for identities, SSID for Wi-Fi. `None` for notes, aliases, SSH keys, and custom items: their only distinguishing content is secret, and a note preview would put the note body on screen, so those rows show the title alone (decision 2026-09-18, FR-008). Never note content or any secret. |
 | `urls` | `Vec<String>` | Login websites. Search uses the host part. |
 | `totp_fields` | `Vec<String>` | TOTP field names (`totp_uri` for the login code, custom TOTP names). `has_totp()` is `!totp_fields.is_empty()`. |
 | `fields` | `Vec<FieldRef>` | Copyable standard and custom fields in display order, excluding TOTP fields. |
