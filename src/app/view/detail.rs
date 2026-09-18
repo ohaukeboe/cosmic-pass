@@ -28,6 +28,51 @@ fn kind_label(kind: &ItemKind) -> &str {
     }
 }
 
+/// The `(label, shown value)` pairs of the detail pane, in display order. Secret values are
+/// masked unless revealed. Every website is already a field of its own, so `urls` is not
+/// rendered separately.
+pub fn rows(model: &Model, now: i64) -> Vec<(String, String)> {
+    let _ = now;
+    let Some(item) = model.target_item() else {
+        return Vec::new();
+    };
+    let primary = match primary_action(item) {
+        Some(CopySource::Field(f)) if f.secret => Some(f.name),
+        _ => None,
+    };
+    item.fields
+        .iter()
+        .map(
+            |FieldRef {
+                 name,
+                 label,
+                 value,
+                 secret,
+             }| {
+                let shown = match (value, *secret) {
+                    (Some(v), false) => v.clone(),
+                    (_, true) if primary.as_deref() == Some(name.as_str()) => model
+                        .view
+                        .revealed
+                        .as_ref()
+                        .map_or_else(|| MASK.to_owned(), |v| v.expose_secret().to_owned()),
+                    (_, true) => MASK.to_owned(),
+                    (None, false) => "—".to_owned(),
+                };
+                (label.clone(), shown)
+            },
+        )
+        .collect()
+}
+
+fn field_row_owned<'a>(label: String, value: String) -> Element<'a, Message> {
+    row::with_capacity(3)
+        .spacing(12)
+        .push(text::caption(label).width(Length::Fixed(140.0)))
+        .push(text::body(value))
+        .into()
+}
+
 fn field_row<'a>(label: &'a str, value: String) -> Element<'a, Message> {
     row::with_capacity(3)
         .spacing(12)
@@ -40,11 +85,6 @@ pub fn view(model: &Model, now: i64) -> Element<'_, Message> {
     let Some(item) = model.target_item() else {
         return text::body("Item no longer exists").into();
     };
-    let primary = match primary_action(item) {
-        Some(CopySource::Field(f)) if f.secret => Some(f.name),
-        _ => None,
-    };
-
     let header = row::with_capacity(5)
         .spacing(12)
         .align_y(Alignment::Center)
@@ -65,27 +105,8 @@ pub fn view(model: &Model, now: i64) -> Element<'_, Message> {
         .push(space::horizontal().width(Length::Fill));
 
     let mut body = column::with_capacity(item.fields.len() + 4).spacing(8);
-    for url in item.urls.iter().skip(1) {
-        body = body.push(field_row("Website", url.clone()));
-    }
-    for FieldRef {
-        name,
-        label,
-        value,
-        secret,
-    } in &item.fields
-    {
-        let shown = match (value, *secret) {
-            (Some(v), false) => v.clone(),
-            (_, true) if primary.as_deref() == Some(name.as_str()) => model
-                .view
-                .revealed
-                .as_ref()
-                .map_or_else(|| MASK.to_owned(), |v| v.expose_secret().to_owned()),
-            (_, true) => MASK.to_owned(),
-            (None, false) => "—".to_owned(),
-        };
-        body = body.push(field_row(label, shown));
+    for (label, shown) in rows(model, now) {
+        body = body.push(field_row_owned(label, shown));
     }
 
     if let Some(totp) = &model.view.totp {
@@ -107,7 +128,8 @@ pub fn view(model: &Model, now: i64) -> Element<'_, Message> {
         body = body.push(field_row("One-time code", "…".to_owned()));
     }
 
-    let reveal_hint = if primary.is_some() {
+    let has_secret = matches!(primary_action(item), Some(CopySource::Field(f)) if f.secret);
+    let reveal_hint = if has_secret {
         format!(
             "{} to reveal · {} to copy",
             model.prefs.chord(Action::Reveal),

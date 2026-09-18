@@ -135,3 +135,41 @@ async fn stale_reveal_result_is_ignored() {
     h.send(Msg::Back).await;
     assert!(h.model.view.revealed.is_none());
 }
+
+#[tokio::test]
+async fn detail_pane_lists_each_website_once() {
+    // Every website is its own copyable field, so the pane must not also render the extras.
+    let mut item = github();
+    item.urls = vec![
+        "https://github.com/login".into(),
+        "https://gist.github.com".into(),
+    ];
+    item.fields.push(FieldRef::plain(
+        "url",
+        "Website",
+        "https://github.com/login".into(),
+    ));
+    item.fields.push(FieldRef::plain(
+        "url2",
+        "Website 2",
+        "https://gist.github.com".into(),
+    ));
+    let backend = FakeBackend::with_items(vec![item]);
+    let mut h = Harness::new(backend);
+    h.send(Msg::RefreshRequested).await;
+    h.send(Msg::Show).await;
+    h.send(Msg::OpenDetail).await;
+
+    let shown = cosmic_pass::app::view::detail::rows(&h.model, h.now());
+    let websites: Vec<_> = shown
+        .iter()
+        .filter(|(_, value)| value.starts_with("https://"))
+        .collect();
+    assert_eq!(
+        websites.len(),
+        2,
+        "each website appears exactly once: {shown:?}"
+    );
+    assert_eq!(websites[0].0, "Website");
+    assert_eq!(websites[1].0, "Website 2");
+}
