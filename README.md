@@ -62,4 +62,4 @@ See the Build & Test section in [`CLAUDE.md`](CLAUDE.md). Design documents live 
 
 ## License
 
-GPL-3.0-only.
+MIT — see [LICENSE](LICENSE).

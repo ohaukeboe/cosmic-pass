@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.93"
 description = "Quick-access popup for Proton Pass on the COSMIC desktop (unofficial)"
-license = "GPL-3.0-only"
+license = "MIT"
 repository = "https://github.com/ohaukeboe/cosmic-pass"
 publish = false
 
