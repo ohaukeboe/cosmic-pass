@@ -40,6 +40,24 @@ pub enum DataSource {
     DiskCache,
 }
 
+/// Why the last refresh failed, so the status line can say so.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefreshError {
+    /// Proton Pass could not be reached: the network is down or `pass-cli` timed out.
+    Unreachable,
+    /// Any other failure; the shown data is simply out of date.
+    Other,
+}
+
+impl RefreshError {
+    fn of(error: &PassError) -> Self {
+        match error {
+            PassError::Network | PassError::Timeout => Self::Unreachable,
+            _ => Self::Other,
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct DataState {
     pub vaults: Vec<Vault>,
@@ -51,6 +69,8 @@ pub struct DataState {
     pub source: DataSource,
     /// Refresh time recorded in the loaded cache file.
     pub cached_at: Option<i64>,
+    /// Why the last refresh failed, cleared by the next successful one.
+    pub last_error: Option<RefreshError>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -217,6 +237,19 @@ impl Model {
         )
     }
 
+    /// The status line to show while the shown data may be out of date, if any.
+    pub fn stale_notice(&self) -> Option<&'static str> {
+        if !self.data.stale || self.data.refreshing {
+            return None;
+        }
+        Some(match self.data.last_error {
+            Some(RefreshError::Unreachable) => {
+                "Can’t reach Proton Pass — showing saved items. Press F5 to retry."
+            }
+            Some(RefreshError::Other) | None => "Data may be out of date. Press F5 to refresh.",
+        })
+    }
+
     /// Whether item data can be fetched in the current session state.
     fn may_refresh(&self) -> bool {
         !matches!(
@@ -277,6 +310,7 @@ impl Model {
             Msg::DataLoaded(listing) => {
                 self.data.refreshing = false;
                 self.data.stale = false;
+                self.data.last_error = None;
                 self.data.source = DataSource::Memory;
                 self.data.fetched_at = Some(now);
                 self.data.cached_at = None;
@@ -561,8 +595,9 @@ impl Model {
                 self.session = SessionState::CliMissing;
                 vec![]
             }
-            _ => {
+            other => {
                 self.data.stale = true;
+                self.data.last_error = Some(RefreshError::of(&other));
                 vec![]
             }
         }
@@ -1050,6 +1085,72 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn unreachable_refresh_is_reported_as_such() {
+        for error in [PassError::Network, PassError::Timeout] {
+            let mut m = loaded(vec![login("a", "GitHub")]);
+            m.update(Msg::RefreshRequested, 0);
+            m.update(Msg::RefreshFailed(error.clone()), 0);
+            assert_eq!(
+                m.data.last_error,
+                Some(RefreshError::Unreachable),
+                "{error}"
+            );
+            let notice = m.stale_notice().expect("a status line");
+            assert!(notice.contains("reach Proton Pass"), "{notice}");
+        }
+    }
+
+    #[test]
+    fn other_refresh_failures_keep_the_generic_status_line() {
+        let mut m = loaded(vec![login("a", "GitHub")]);
+        m.update(Msg::RefreshRequested, 0);
+        m.update(Msg::RefreshFailed(PassError::NotFound), 0);
+        assert_eq!(m.data.last_error, Some(RefreshError::Other));
+        let notice = m.stale_notice().expect("a status line");
+        assert!(notice.contains("out of date"), "{notice}");
+    }
+
+    #[test]
+    fn a_successful_refresh_clears_the_failure() {
+        let mut m = loaded(vec![login("a", "GitHub")]);
+        m.update(Msg::RefreshRequested, 0);
+        m.update(Msg::RefreshFailed(PassError::Network), 0);
+        m.update(Msg::DataLoaded(listing(vec![login("a", "GitHub")])), 2_000);
+        assert_eq!(m.data.last_error, None);
+        assert_eq!(m.stale_notice(), None);
+    }
+
+    #[test]
+    fn no_status_line_while_refreshing_again() {
+        let mut m = loaded(vec![login("a", "GitHub")]);
+        m.update(Msg::RefreshRequested, 0);
+        m.update(Msg::RefreshFailed(PassError::Network), 0);
+        m.update(Msg::RefreshRequested, 0);
+        assert!(m.data.refreshing);
+        assert_eq!(m.stale_notice(), None);
+    }
+
+    #[test]
+    fn cached_data_without_a_failure_is_merely_stale() {
+        let mut m = Model::default();
+        m.update(
+            Msg::CacheLoaded(Some(CacheFile {
+                format_version: CACHE_FORMAT_VERSION,
+                account: AccountId("account-1".into()),
+                fetched_at: 10,
+                vaults: listing(vec![]).vaults,
+                items: vec![login("a", "GitHub")],
+                usage: vec![],
+            })),
+            1_000,
+        );
+        assert!(m.data.stale);
+        assert_eq!(m.data.last_error, None);
+        let notice = m.stale_notice().expect("a status line");
+        assert!(notice.contains("out of date"), "{notice}");
+    }
+
+    #[test]
     fn notice_expires_only_if_current() {
         let mut m = Model::default();
         let fx = m.notify("first");
@@ -1123,6 +1224,19 @@ pub(crate) mod tests {
         assert_eq!(m.session, SessionState::SignedOut);
         assert!(names(&fx).contains(&"DeleteCache"));
         assert!(m.data.items.is_empty());
+    }
+
+    #[test]
+    fn session_probe_network_failure_records_the_cause() {
+        // The probe path marks data stale too, so it must record why (FR-020).
+        let mut m = loaded(vec![login("a", "A")]);
+        m.session = SessionState::SignedIn(account("a"));
+        m.update(Msg::SessionProbed(Err(PassError::Network)), 0);
+        assert_eq!(m.data.last_error, Some(RefreshError::Unreachable));
+        assert_eq!(
+            m.stale_notice(),
+            Some("Can\u{2019}t reach Proton Pass \u{2014} showing saved items. Press F5 to retry.")
+        );
     }
 
     #[test]

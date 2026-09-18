@@ -66,6 +66,21 @@ async fn network_error_keeps_items_and_marks_stale() {
 }
 
 #[tokio::test]
+async fn network_error_is_reported_as_unreachable() {
+    let mut h = started(items()).await;
+    h.backend.set_listing(Err(PassError::Network));
+    h.send(Msg::RefreshRequested).await;
+    let notice = h.model.stale_notice().expect("a status line");
+    assert!(notice.contains("reach Proton Pass"), "{notice}");
+    assert!(notice.contains("F5"), "{notice}");
+
+    h.backend
+        .set_listing(Ok(listing(vec![summary("a", "Alpha", ItemKind::Login)])));
+    h.send(Msg::RefreshRequested).await;
+    assert_eq!(h.model.stale_notice(), None, "cleared by a good refresh");
+}
+
+#[tokio::test]
 async fn failing_vault_keeps_old_list() {
     let mut h = started(items()).await;
     h.backend.set_listing(Err(PassError::NotFound));
