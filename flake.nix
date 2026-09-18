@@ -1,7 +1,9 @@
 {
   description = "Quick-access popup for Proton Pass on the COSMIC desktop";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  # The channel tarball is smaller and faster to fetch than the GitHub archive, and it always
+  # points at a nixpkgs revision that passed the channel's tests.
+  inputs.nixpkgs.url = "https://channels.nixos.org/nixos-unstable/nixexprs.tar.zst";
 
   outputs =
     { self, nixpkgs }:
