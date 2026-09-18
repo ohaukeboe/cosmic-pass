@@ -50,7 +50,12 @@ Also record the signed-out and locked `Error:` lines.
 
 ### V2. Core flow — User Story 1
 
-1. Press `Super+Shift+P`. Window appears centered, search focused (SC-001: feels instant).
+1. Press `Super+Shift+P`. Window appears centered, search focused (SC-001).
+   To record the number: stop the user service, run
+   `RUST_LOG=cosmic_pass=debug ./target/release/cosmic-pass --background 2>/tmp/open-latency.log`,
+   open and close the popup ~20 times, then take the p95 of the `open latency:` lines and record
+   it in research.md ("Open latency"). That figure covers the resident instance only; add the
+   shortcut's own process spawn and D-Bus hop by timing `time cosmic-pass` while an instance runs.
 2. Type part of the TOTP login's title. Results narrow on each keystroke.
 3. Press `Enter`. Window closes.
 4. Paste into a text editor. Value equals the item's password.

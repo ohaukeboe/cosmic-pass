@@ -29,7 +29,7 @@ pub fn panel(model: &Model) -> Option<Element<'_, Message>> {
         SessionState::CliMissing => (
             "dialog-warning-symbolic",
             "pass-cli is not installed",
-            format!("COSMIC Pass needs the Proton Pass command-line tool: {PASS_CLI_URL}"),
+            "COSMIC Pass needs the Proton Pass command-line tool.".to_owned(),
         ),
         SessionState::Error(message) => (
             "dialog-warning-symbolic",

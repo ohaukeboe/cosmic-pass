@@ -32,16 +32,34 @@ confirmed from docs or source and each has a validation step in [quickstart.md](
   - Start with `cosmic::app::run_single_instance`, `no_main_window(true)`,
     `exit_on_close(false)`. The process stays resident.
   - Show the UI as a wlr layer-shell surface: `KeyboardInteractivity::Exclusive`, anchored
-    top (compositor centers it horizontally), top margin ~20% of output height, width 640 px,
-    `exclusive_zone: -1`.
+    top (compositor centers it horizontally), fixed top offset 160 logical px (see
+    *Top offset* below), width 640 px, `exclusive_zone: -1`.
   - Hide by destroying the layer surface. Hide on `LayerEvent::Unfocused`, on Escape, and
     after a copy. Use a 100 ms debounce so the toggle does not re-open a just-hidden window.
   - Running `cosmic-pass` again while an instance runs sends a D-Bus `Activate` to the resident
     instance, which toggles the window, then the new process exits.
 - **Rationale**: This is exactly how COSMIC's own launcher meets the "instant open" goal
   (SC-001). The window never needs a cold process start.
+- **Top offset (amended 2026-09-18)**: the original plan said "~20% of output height". The
+  implementation uses a **fixed 160 logical px** (`surface::TOP_MARGIN`, rendered as a spacer
+  above the framed popup inside the autosized surface), and that is the decision now.
+  - Reasons: the app never learns which output the popup lands on. `output: None` lets the
+    compositor place the surface on the focused output, while `OutputEvent::Created` /
+    `InfoUpdate` only describe *all* outputs; with more than one output, picking a height
+    would be a guess that changes where the popup sits depending on which monitor the user
+    last touched. A proportional offset is also worse at the extremes: 20% of a 1440 px
+    display pushes the popup 288 px down, while on a 768 px laptop panel 20% plus the list
+    height starts to crowd the bottom of the screen.
+  - A fixed offset keeps the popup in the upper third on 1080p and 1440p, is stable while the
+    user types (the offset does not depend on the result count, and the surface is anchored
+    top so only its bottom edge grows), and needs no output subscription or state.
+  - Revisit if users on very tall or very short outputs report the popup feeling misplaced;
+    the machinery would then be a `wayland::Event::Output` subscription plus a per-output
+    logical height, and the margin would move from the view spacer to the layer surface's
+    `IcedMargin`.
 - **Alternatives considered**: xdg toplevel window (cannot guarantee centered, on-top,
-  exclusive keyboard); cold-starting the process per shortcut press (too slow for 100 ms).
+  exclusive keyboard); cold-starting the process per shortcut press (too slow for 100 ms);
+  deriving the top offset from the active output's logical height (see *Top offset*).
 
 ## R3. Global shortcut and autostart
 
@@ -215,6 +233,23 @@ confirmed from docs or source and each has a validation step in [quickstart.md](
 - **Rationale**: Satisfies constitution Quality Standards (single commands, reproducible
   environment) and Principles II–III.
 
+## Live validation (2026-09-18)
+
+The quickstart scenarios were driven against the real vault on the target machine. Verified:
+the core copy flow and clipboard clear (V2), field and TOTP copies including the action list
+(V3), clipboard hint and timeout behaviour (V4), the detail pane with reveal and a live TOTP
+countdown (V6), the status panels for signed-out, tool-missing and unreachable-network (V5
+subset, simulated), the encrypted cache and its keyring key (V7), SC-001 latency, and
+responsiveness at 10,000 items with no dropped keystrokes (V9).
+
+Defects found live and fixed the same day: the keyboard selection was never drawn (rows used a
+button class that paints no selected state); non-secret copies were wiped from the clipboard
+~95 s later by the helper watchdog; the `pass-cli` missing panel printed its URL twice; the
+session debug log carried the account id. A first attempt at the clipboard fix removed
+`--timeout` from the helper argv, which the parser requires — that broke copying entirely and
+was caught by re-verification, then fixed by arming the watchdog only for `--secret` and adding
+a test that parses the spawned argv with the real parser.
+
 ## Open validation items (not blockers)
 
 | ID | Item | Validated in |
@@ -222,5 +257,51 @@ confirmed from docs or source and each has a validation step in [quickstart.md](
 | V1 | Real `pass-cli` JSON shapes and error texts | Done 2026-09-17 (locked-session text still unobserved) |
 | V2 | `iced_test` works with libcosmic elements | **No** (2026-09-17): at libcosmic `87ab817` the `iced_test` crate in the pop-os iced fork does not compile (`renderer::Style` gained `icon_color`/`scale_factor`, `runtime::Action` gained `Dnd`/`PlatformSpecific`). UI behavior stays covered by reducer tests plus quickstart V2–V6. Re-check when libcosmic is bumped. |
 | V3 | Selection clears when helper is killed; hint mime offered | **Yes** (2026-09-17): killing the helper leaves "Nothing is copied"; the helper exits when another client copies; `x-kde-passwordManagerHint=secret` is offered. |
-| V4 | `pass-cli login` needs no TTY | quickstart V5 |
+| V4 | `pass-cli login` needs no TTY | **Still open**: the live run never signed the real account out, so the browser sign-in path is unexercised. The signed-out panel itself was verified with a simulated CLI. |
+| V6 | Focus loss hides the popup (FR-003) | **Still open**: not drivable on a live session without clicking into the user's own windows. Escape and the hide command were verified instead. |
+| V7 | Locked-keyring path (FR-024a) | **Still open**: only `COSMIC_PASS_NO_KEYRING=1` was exercised (no cache written, app works). A genuinely locked keyring was never observed. |
 | V5 | Typing reaches the search field | Fixed 2026-09-18: the field needs `always_active()` plus a focus task on `LayerEvent::Focused`; an early focus task alone is lost while the layer surface is being created. |
+
+### Open latency (SC-001)
+
+The app measures each open itself: the clock starts when the show request reaches `dispatch`
+(`Msg::Show` / `Msg::Toggle`, including the D-Bus `Activate` path used by the global shortcut
+and by a second `cosmic-pass` invocation) and stops at `LayerEvent::Focused` for our layer
+surface, the point where the popup accepts typing. The result is one debug line per open:
+
+```
+open latency: 42.3 ms from show request to focus
+```
+
+To capture it:
+
+```bash
+systemctl --user stop cosmic-pass    # if the service is running
+RUST_LOG=cosmic_pass=debug ./target/release/cosmic-pass --background 2>&1 | tee /tmp/open-latency.log
+# press the shortcut ~20 times, then:
+grep -o 'open latency: [0-9.]*' /tmp/open-latency.log | sort -g -k3 | tail -3
+```
+
+Use a release build; a debug build is not representative. The first open after start also pays
+the cold-start cost and is reported separately from the steady-state figures. No item data is
+logged — the line carries a duration only.
+
+**Scope:** the clock starts inside the resident instance, so the logged figure excludes the
+launcher process that the shortcut spawns and its D-Bus hop to the running instance. SC-001
+budgets the whole press-to-typing path, so pair the logged p95 with a `time cosmic-pass` run
+against a live instance before judging the criterion met.
+
+**Measured 2026-09-18** on the target machine (release build, 572-item vault), driven
+synthetically while the user stayed off the keyboard:
+
+| Segment | median | p95 | max |
+|---------|--------|-----|-----|
+| In-app (show request → `LayerEvent::Focused`), warm, n=55 | 22.3 ms | 40.9 ms | 46.6 ms |
+| Shortcut process spawn + D-Bus `Activate` hop, n=15 | 8.7 ms | 10.6 ms | 10.8 ms |
+| End to end (paired per run, n=15) | 30.6 ms | 52.2 ms | 55.3 ms |
+
+SC-001 (< 100 ms in 95% of openings) is met with about 2× headroom. Known outlier: the first
+open after process start measured 87–123 ms across runs; a resident instance pays this once per
+process lifetime, not per shortcut press, so it does not move the 95th percentile of real usage.
+
+

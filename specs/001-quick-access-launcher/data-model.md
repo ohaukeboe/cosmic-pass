@@ -40,7 +40,7 @@ Unknown kinds from newer `pass-cli` versions are kept and shown with a generic i
 | `subtitle` | `Option<String>` | Username (else email) for logins, card holder for cards, full name for identities, SSID for Wi-Fi. `None` for notes, aliases, SSH keys, and custom items: their only distinguishing content is secret, and a note preview would put the note body on screen, so those rows show the title alone (decision 2026-09-18, FR-008). Never note content or any secret. |
 | `urls` | `Vec<String>` | Login websites. Search uses the host part. |
 | `totp_fields` | `Vec<String>` | TOTP field names (`totp_uri` for the login code, custom TOTP names). `has_totp()` is `!totp_fields.is_empty()`. |
-| `fields` | `Vec<FieldRef>` | Copyable standard and custom fields in display order, excluding TOTP fields. |
+| `fields` | `Vec<FieldRef>` | Copyable standard and custom fields in display order, excluding TOTP fields. Every login website becomes one field: `url` ("Website") for the first, then `url2`, `url3`, ... ("Website 2", ...). |
 | `modified_at` | `i64` (unix s) | For tie-breaking and change detection. |
 
 Validation:
@@ -53,10 +53,10 @@ Validation:
 
 | Field | Type | Rules |
 |-------|------|-------|
-| `name` | `String` | `pass-cli` field name (`username`, `password`, `totp`, custom name, `Section.field`). |
+| `name` | `String` | `pass-cli` field name (`username`, `password`, `totp`, custom name, `Section.field`), or a synthetic name for a field whose value is already stored (`url2`, `url3`, ... for the second and later websites). A custom field may carry the same name; lookups take the first match, and every website entry stores its own value, so each row still copies its own URL. |
 | `label` | `String` | Human label for the action list. |
 | `secret` | `bool` | Masked in UI; triggers clipboard timeout on copy. |
-| `value` | `Option<String>` | Only for non-secret standard fields (username, email, first URL, card holder, expiry, SSID, public key): copied without calling `pass-cli`. `None` for secrets and for custom `Text` fields (fetched on demand, no timeout). |
+| `value` | `Option<String>` | Only for non-secret standard fields (username, email, every URL, card holder, expiry, SSID, public key): copied without calling `pass-cli`. `None` for secrets and for custom `Text` fields (fetched on demand, no timeout). |
 
 ## CopyAction
 
@@ -64,7 +64,7 @@ Derived per item kind (FR-011–FR-013):
 
 | Kind | Primary (Enter) | Other actions |
 |------|-----------------|---------------|
-| Login | `password` | `username`, `email`, `totp`, `url` (first), each custom field |
+| Login | `password` | `username`, `email`, `totp`, every website (`url`, `url2`, ...), each custom field |
 | CreditCard | card `number` | holder name, expiry, `cvv`, custom fields |
 | Note | `note` | custom fields |
 | Alias | alias email | `note` |
@@ -72,7 +72,9 @@ Derived per item kind (FR-011–FR-013):
 
 `CopySource = Field(FieldRef) | Totp { field: String }`. A `Field` with a stored `value`
 needs no `pass-cli` call. Action-list entries are `ActionEntry { source, label, shortcut }`,
-primary first, then fields in order, then TOTP fields.
+primary first, then fields in order, then TOTP fields. A keyboard shortcut is bound to at
+most one entry: copy-website to the first website (`url`), copy-username to the first
+`username` field, else the first `email` field, copy-one-time-code to the first TOTP field.
 
 ## SecretValue (never cached, never logged)
 
@@ -122,7 +124,8 @@ any ─network error─▶ state unchanged, data.stale = true
 | `fetched_at` | `Option<i64>` | Last successful full refresh. |
 | `stale` | `bool` | True if last refresh failed or data came from cache and refresh is pending. |
 | `refreshing` | `bool` | A refresh task is in flight. Only one at a time. |
-| `source` | `Memory \| DiskCache` | For the stale indicator text. |
+| `source` | `Memory \| DiskCache` | Where the current items came from. |
+| `last_error` | `Option<RefreshError>` | Why the last refresh or session probe failed: `Unreachable` for `PassError::Network`/`Timeout`, else `Other`. Cleared on the next successful load and on sign-out. Chooses the status line (FR-020): "Can't reach Proton Pass — showing saved items." vs the generic "Data may be out of date." |
 | `cached_at` | `Option<i64>` | `fetched_at` recorded in the loaded cache file. |
 
 Refresh replaces `items` atomically only after every vault listing succeeds. A partial
