@@ -1,0 +1,23 @@
+{
+  "items": [
+    {
+      "id": "login-github-work", "share_id": "-share-b", "vault_id": "vault-b", "state": "Active",
+      "flags": [], "create_time": "2026-01-02T03:04:05", "modify_time": "2026-03-01T00:00:00",
+      "content": {
+        "title": "GitHub", "note": "", "item_uuid": "u11",
+        "content": {"Login": {"email": "work@example.invalid", "username": "work-octo",
+          "password": "SECRET-FIXTURE-work-password", "urls": ["https://github.com/"],
+          "totp_uri": "", "passkeys": []}},
+        "extra_fields": []
+      }
+    },
+    {
+      "id": "alias-shop", "share_id": "-share-b", "vault_id": "vault-b", "state": "Active",
+      "flags": [], "create_time": "2026-01-02T03:04:05", "modify_time": "2026-03-02T00:00:00",
+      "content": {
+        "title": "Shop alias", "note": "", "item_uuid": "u12",
+        "content": {"Alias": null}, "extra_fields": []
+      }
+    }
+  ]
+}

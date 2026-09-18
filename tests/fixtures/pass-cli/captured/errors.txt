@@ -1,0 +1,13 @@
+# missing item
+Error: Error retrieving item
+
+Caused by:
+    0: Error finding item by name
+    1: Error finding vault by name
+    2: Could not find vault <ID>
+# bad share id
+Error: Error listing items
+
+Caused by:
+    0: Error fetching items
+    1: Could not perform operation. Reason: IdFormat

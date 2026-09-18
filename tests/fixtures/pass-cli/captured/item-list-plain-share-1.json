@@ -1,0 +1,161 @@
+{
+  "items": [
+    {
+      "id": "item-1",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "state": "Active",
+      "flags": [],
+      "create_time": "2024-06-22T16:21:37",
+      "modify_time": "2024-06-22T16:28:52",
+      "title": "REDACTED-title",
+      "item_type": "credit_card"
+    },
+    {
+      "id": "item-2",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "state": "Active",
+      "flags": [],
+      "create_time": "2024-04-14T18:16:40",
+      "modify_time": "2026-07-14T07:40:46",
+      "title": "REDACTED-title",
+      "item_type": "credit_card"
+    },
+    {
+      "id": "item-3",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "state": "Active",
+      "flags": [],
+      "create_time": "2025-04-10T08:54:01",
+      "modify_time": "2025-04-10T08:54:01",
+      "title": "REDACTED-title",
+      "item_type": "custom"
+    },
+    {
+      "id": "item-4",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "state": "Active",
+      "flags": [],
+      "create_time": "2026-06-03T20:39:54",
+      "modify_time": "2026-06-03T20:39:54",
+      "title": "REDACTED-title",
+      "item_type": "custom"
+    },
+    {
+      "id": "item-5",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "state": "Active",
+      "flags": [],
+      "create_time": "2024-01-30T09:57:36",
+      "modify_time": "2025-08-28T16:55:15",
+      "title": "REDACTED-title",
+      "item_type": "identity"
+    },
+    {
+      "id": "item-6",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "state": "Active",
+      "flags": [],
+      "create_time": "2024-04-12T09:20:35",
+      "modify_time": "2026-08-11T06:45:35",
+      "title": "REDACTED-title",
+      "item_type": "identity"
+    },
+    {
+      "id": "item-7",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "state": "Active",
+      "flags": [],
+      "create_time": "2024-01-03T10:11:59",
+      "modify_time": "2024-01-03T10:11:59",
+      "title": "REDACTED-title",
+      "item_type": "login"
+    },
+    {
+      "id": "item-8",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "state": "Active",
+      "flags": [],
+      "create_time": "2024-01-03T10:11:59",
+      "modify_time": "2024-01-03T10:11:59",
+      "title": "REDACTED-title",
+      "item_type": "login"
+    },
+    {
+      "id": "item-9",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "state": "Active",
+      "flags": [],
+      "create_time": "2025-12-13T12:37:57",
+      "modify_time": "2025-12-13T12:37:57",
+      "title": "REDACTED-title",
+      "item_type": "note"
+    },
+    {
+      "id": "item-10",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "state": "Active",
+      "flags": [
+        "REDACTED-flags",
+        "REDACTED-flags"
+      ],
+      "create_time": "2024-08-26T21:20:07",
+      "modify_time": "2024-08-27T13:12:01",
+      "title": "REDACTED-title",
+      "item_type": "note"
+    },
+    {
+      "id": "item-11",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "state": "Active",
+      "flags": [],
+      "create_time": "2024-01-30T09:51:39",
+      "modify_time": "2024-12-31T16:45:16",
+      "title": "REDACTED-title",
+      "item_type": "ssh_key"
+    },
+    {
+      "id": "item-12",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "state": "Active",
+      "flags": [],
+      "create_time": "2025-01-23T07:29:23",
+      "modify_time": "2025-11-24T11:08:08",
+      "title": "REDACTED-title",
+      "item_type": "ssh_key"
+    },
+    {
+      "id": "item-13",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "state": "Active",
+      "flags": [],
+      "create_time": "2024-09-01T11:06:33",
+      "modify_time": "2026-02-12T14:53:28",
+      "title": "REDACTED-title",
+      "item_type": "wifi"
+    },
+    {
+      "id": "item-14",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "state": "Trashed",
+      "flags": [],
+      "create_time": "2024-01-03T10:11:59",
+      "modify_time": "2025-07-03T14:55:32",
+      "title": "REDACTED-title",
+      "item_type": "login"
+    }
+  ]
+}

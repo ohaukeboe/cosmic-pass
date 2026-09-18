@@ -1,0 +1,128 @@
+{
+  "items": [
+    {
+      "id": "login-github", "share_id": "share-a", "vault_id": "vault-a", "state": "Active",
+      "flags": [], "create_time": "2026-01-02T03:04:05", "modify_time": "2026-02-03T04:05:06",
+      "content": {
+        "title": "GitHub", "note": "SECRET-FIXTURE-login-note", "item_uuid": "u1",
+        "content": {"Login": {
+          "email": "octo@example.invalid", "username": "octocat",
+          "password": "SECRET-FIXTURE-github-password",
+          "urls": ["https://github.com/login", "https://gist.github.com"],
+          "totp_uri": "otpauth://totp/GitHub?secret=SECRETFIXTUREGITHUB",
+          "passkeys": []
+        }},
+        "extra_fields": [
+          {"name": "Recovery code", "content": {"Hidden": "SECRET-FIXTURE-recovery"}},
+          {"name": "Account id", "content": {"Text": "public-account-42"}},
+          {"name": "Backup TOTP", "content": {"Totp": "otpauth://totp/Backup?secret=SECRETFIXTUREBACKUP"}}
+        ]
+      }
+    },
+    {
+      "id": "login-mail", "share_id": "share-a", "vault_id": "vault-a", "state": "Active",
+      "flags": ["ItemHasFiles"], "create_time": "2026-01-02T03:04:05", "modify_time": "2026-01-05T00:00:00",
+      "content": {
+        "title": "Example Mail", "note": "", "item_uuid": "u2",
+        "content": {"Login": {
+          "email": "me@example.invalid", "username": "",
+          "password": "SECRET-FIXTURE-mail-password",
+          "urls": ["https://mail.example.invalid/"], "totp_uri": "", "passkeys": []
+        }},
+        "extra_fields": []
+      }
+    },
+    {
+      "id": "note-wifi-codes", "share_id": "share-a", "vault_id": "vault-a", "state": "Active",
+      "flags": [], "create_time": "2026-01-02T03:04:05", "modify_time": "2026-01-06T00:00:00",
+      "content": {
+        "title": "Router notes", "note": "SECRET-FIXTURE-note-body", "item_uuid": "u3",
+        "content": {"Note": null}, "extra_fields": []
+      }
+    },
+    {
+      "id": "card-visa", "share_id": "share-a", "vault_id": "vault-a", "state": "Active",
+      "flags": [], "create_time": "2026-01-02T03:04:05", "modify_time": "2026-01-07T00:00:00",
+      "content": {
+        "title": "Visa", "note": "", "item_uuid": "u4",
+        "content": {"CreditCard": {
+          "cardholder_name": "Fixture Holder", "card_type": "Visa",
+          "number": "SECRET-FIXTURE-card-number", "verification_number": "SECRET-FIXTURE-cvv",
+          "expiration_date": "2030-01", "pin": "SECRET-FIXTURE-pin"
+        }},
+        "extra_fields": []
+      }
+    },
+    {
+      "id": "login-old", "share_id": "share-a", "vault_id": "vault-a", "state": "Trashed",
+      "flags": [], "create_time": "2026-01-02T03:04:05", "modify_time": "2026-01-08T00:00:00",
+      "content": {
+        "title": "Trashed Login", "note": "", "item_uuid": "u5",
+        "content": {"Login": {"email": "", "username": "gone", "password": "SECRET-FIXTURE-trashed",
+          "urls": [], "totp_uri": "", "passkeys": []}},
+        "extra_fields": []
+      }
+    },
+    {
+      "id": "identity-me", "share_id": "share-a", "vault_id": "vault-a", "state": "Active",
+      "flags": [], "create_time": "2026-01-02T03:04:05", "modify_time": "2026-01-09T00:00:00",
+      "content": {
+        "title": "Me", "note": "", "item_uuid": "u6",
+        "content": {"Identity": {
+          "full_name": "Fixture Person", "email": "person@example.invalid",
+          "social_security_number": "SECRET-FIXTURE-ssn", "passport_number": "SECRET-FIXTURE-passport",
+          "license_number": "SECRET-FIXTURE-license", "extra_personal_details": [],
+          "extra_address_details": [], "extra_contact_details": [], "extra_work_details": [],
+          "extra_sections": []
+        }},
+        "extra_fields": []
+      }
+    },
+    {
+      "id": "wifi-home", "share_id": "share-a", "vault_id": "vault-a", "state": "Active",
+      "flags": [], "create_time": "2026-01-02T03:04:05", "modify_time": "2026-01-10T00:00:00",
+      "content": {
+        "title": "Home Wi-Fi", "note": "", "item_uuid": "u7",
+        "content": {"Wifi": {"ssid": "fixture-ssid", "password": "SECRET-FIXTURE-wifi",
+          "security": "WPA2", "sections": []}},
+        "extra_fields": []
+      }
+    },
+    {
+      "id": "ssh-server", "share_id": "share-a", "vault_id": "vault-a", "state": "Active",
+      "flags": [], "create_time": "2026-01-02T03:04:05", "modify_time": "2026-01-11T00:00:00",
+      "content": {
+        "title": "Build server key", "note": "", "item_uuid": "u8",
+        "content": {"SshKey": {
+          "private_key": "SECRET-FIXTURE-ssh-private", "public_key": "ssh-ed25519 AAAAfixture",
+          "sections": [{"section_name": "Host", "section_fields": [
+            {"name": "Passphrase", "content": {"Hidden": "SECRET-FIXTURE-ssh-passphrase"}},
+            {"name": "Hostname", "content": {"Text": "build.example.invalid"}}
+          ]}]
+        }},
+        "extra_fields": []
+      }
+    },
+    {
+      "id": "custom-api", "share_id": "share-a", "vault_id": "vault-a", "state": "Active",
+      "flags": [], "create_time": "2026-01-02T03:04:05", "modify_time": "2026-01-12T00:00:00",
+      "content": {
+        "title": "", "note": "", "item_uuid": "u9",
+        "content": {"Custom": {"sections": []}},
+        "extra_fields": [
+          {"name": "Endpoint", "content": {"Text": "https://api.example.invalid"}},
+          {"name": "Token", "content": {"Hidden": "SECRET-FIXTURE-api-token"}}
+        ]
+      }
+    },
+    {
+      "id": "future-kind", "share_id": "share-a", "vault_id": "vault-a", "state": "Active",
+      "flags": [], "create_time": "2026-01-02T03:04:05", "modify_time": "2026-01-13T00:00:00",
+      "content": {
+        "title": "Future thing", "note": "", "item_uuid": "u10",
+        "content": {"PasskeyThing": {"secret_blob": "SECRET-FIXTURE-future"}},
+        "extra_fields": []
+      }
+    }
+  ]
+}

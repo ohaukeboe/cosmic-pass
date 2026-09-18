@@ -1,0 +1,90 @@
+#!/bin/sh
+# Fake `pass-cli` for tests. Behaviour is driven by environment variables:
+#   FAKE_FIXTURE_DIR  directory with fixture files (see below)
+#   FAKE_ARGV_LOG     append each invocation's argv (space-joined) to this file
+#   FAKE_TIMES_LOG    append "start <epoch-ns>" / "end <epoch-ns>" lines to this file
+#   FAKE_ECHO_ENV=1   print PASS_LOG_LEVEL and PROTON_PASS_NO_UPDATE_CHECK, then exit
+#   FAKE_SLEEP        seconds to sleep before answering
+#   FAKE_EXIT         non-zero: print FAKE_STDERR (default "Error: fake failure") and exit with it
+#   FAKE_ITEMS=N      `item list` prints N generated login items
+#   FAKE_LOGIN_URL    `login` prints "Please go to <url>" before exiting 0
+#   FAKE_PID_FILE     write this process's pid here
+# Fixture files:
+#   info.json, vault-list.json, item-list-<share>.json,
+#   item-view-<share>-<item>-<field>.txt, item-totp-<share>-<item>.json
+set -u
+
+[ -n "${FAKE_PID_FILE:-}" ] && echo $$ > "$FAKE_PID_FILE"
+[ -n "${FAKE_ARGV_LOG:-}" ] && echo "$*" >> "$FAKE_ARGV_LOG"
+[ -n "${FAKE_TIMES_LOG:-}" ] && echo "start $(date +%s%N)" >> "$FAKE_TIMES_LOG"
+
+finish() {
+    [ -n "${FAKE_TIMES_LOG:-}" ] && echo "end $(date +%s%N)" >> "$FAKE_TIMES_LOG"
+    exit "$1"
+}
+
+if [ "${FAKE_ECHO_ENV:-}" = 1 ]; then
+    stdin_state=open
+    if ! read -r _line; then stdin_state=eof; fi
+    echo "PASS_LOG_LEVEL=${PASS_LOG_LEVEL:-} PROTON_PASS_NO_UPDATE_CHECK=${PROTON_PASS_NO_UPDATE_CHECK:-} STDIN=$stdin_state"
+    finish 0
+fi
+
+[ -n "${FAKE_SLEEP:-}" ] && sleep "$FAKE_SLEEP"
+
+if [ -n "${FAKE_EXIT:-}" ] && [ "$FAKE_EXIT" != 0 ]; then
+    printf '%s\n' "${FAKE_STDERR:-Error: fake failure}" >&2
+    finish "$FAKE_EXIT"
+fi
+
+dir="${FAKE_FIXTURE_DIR:-.}"
+cmd="${1:-} ${2:-}"
+share="" item="" field=""
+uri=""
+for arg in "$@"; do
+    case "$arg" in
+        --share-id=*) share="${arg#--share-id=}" ;;
+        --item-id=*) item="${arg#--item-id=}" ;;
+        --field=*) field="${arg#--field=}" ;;
+        pass://*) uri="${arg#pass://}" ;;
+    esac
+done
+if [ -n "$uri" ]; then
+    share="${uri%%/*}"; rest="${uri#*/}"
+    item="${rest%%/*}"
+    [ "$rest" != "$item" ] && field="${rest#*/}"
+fi
+
+emit() {
+    if [ -f "$1" ]; then cat "$1"; finish 0; fi
+    echo "Error: Error retrieving item" >&2
+    printf '\nCaused by:\n    0: Could not find item\n' >&2
+    finish 1
+}
+
+case "$cmd" in
+    "info "*) emit "$dir/info.json" ;;
+    "vault list") emit "$dir/vault-list.json" ;;
+    "item list")
+        if [ -n "${FAKE_ITEMS:-}" ]; then
+            i=0
+            printf '{"items":['
+            while [ "$i" -lt "$FAKE_ITEMS" ]; do
+                [ "$i" -gt 0 ] && printf ','
+                printf '{"id":"gen-%s","share_id":"%s","vault_id":"v","state":"Active","flags":[],"create_time":"2026-01-01T00:00:00","modify_time":"2026-01-01T00:00:00","content":{"title":"Generated site %s","note":"","item_uuid":"u","content":{"Login":{"email":"user%s@example.invalid","username":"user%s","password":"SECRET-FIXTURE-gen","urls":["https://site%s.example.invalid/login"],"totp_uri":"","passkeys":[]}},"extra_fields":[]}}' \
+                    "$i" "$share" "$i" "$i" "$i" "$i"
+                i=$((i + 1))
+            done
+            printf ']}\n'
+            finish 0
+        fi
+        emit "$dir/item-list-$share.json" ;;
+    "item view") emit "$dir/item-view-$share-$item-$field.txt" ;;
+    "item totp") emit "$dir/item-totp-$share-$item.json" ;;
+    "login "* | "login")
+        [ -n "${FAKE_LOGIN_URL:-}" ] && echo "Please go to $FAKE_LOGIN_URL"
+        finish 0 ;;
+esac
+
+echo "Error: unknown fake command" >&2
+finish 1

@@ -1,0 +1,14 @@
+{
+  "vaults": [
+    {
+      "name": "REDACTED-name",
+      "vault_id": "vault-1",
+      "share_id": "share-1"
+    },
+    {
+      "name": "REDACTED-name",
+      "vault_id": "vault-2",
+      "share_id": "share-2"
+    }
+  ]
+}

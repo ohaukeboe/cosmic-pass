@@ -1,0 +1,26 @@
+{
+  "items": [
+    {
+      "id": "item-15",
+      "share_id": "share-2",
+      "vault_id": "vault-2",
+      "state": "Active",
+      "flags": [],
+      "create_time": "2025-08-02T16:02:14",
+      "modify_time": "2025-09-25T20:13:33",
+      "title": "REDACTED-title",
+      "item_type": "login"
+    },
+    {
+      "id": "item-16",
+      "share_id": "share-2",
+      "vault_id": "vault-2",
+      "state": "Active",
+      "flags": [],
+      "create_time": "2026-02-07T14:01:56",
+      "modify_time": "2026-09-01T18:46:08",
+      "title": "REDACTED-title",
+      "item_type": "login"
+    }
+  ]
+}

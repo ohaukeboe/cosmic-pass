@@ -1,0 +1,2 @@
+SECRET-FIXTURE-note-body
+second line

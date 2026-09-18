@@ -1,0 +1,15 @@
+#!/bin/sh
+# Fake `cosmic-pass clipboard-serve` for tests.
+#   FAKE_CLIP_OUT   file that receives stdin (the copied value)
+#   FAKE_CLIP_ARGV  file that receives argv
+#   FAKE_CLIP_PID   file that receives this process's pid
+#   FAKE_CLIP_LOSE=1  exit right after reading, as if another client took the selection
+#   FAKE_CLIP_EXIT    exit with this code right after reading
+set -u
+[ -n "${FAKE_CLIP_PID:-}" ] && echo $$ > "$FAKE_CLIP_PID"
+[ -n "${FAKE_CLIP_ARGV:-}" ] && echo "$*" >> "$FAKE_CLIP_ARGV"
+cat > "${FAKE_CLIP_OUT:-/dev/null}"
+[ -n "${FAKE_CLIP_EXIT:-}" ] && exit "$FAKE_CLIP_EXIT"
+echo ready
+[ "${FAKE_CLIP_LOSE:-}" = 1 ] && exit 0
+exec sleep 3600

@@ -1,0 +1,632 @@
+{
+  "items": [
+    {
+      "id": "item-1",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "content": {
+        "title": "REDACTED-title",
+        "note": "",
+        "item_uuid": "uuid-14",
+        "content": {
+          "CreditCard": {
+            "cardholder_name": "REDACTED-cardholder_name",
+            "card_type": "Unspecified",
+            "number": "SECRET-FIXTURE-number",
+            "verification_number": "",
+            "expiration_date": "REDACTED-expiration_date",
+            "pin": ""
+          }
+        },
+        "extra_fields": [
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Text": "REDACTED-Text"
+            }
+          },
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Text": "REDACTED-Text"
+            }
+          },
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Hidden": "SECRET-FIXTURE-Hidden"
+            }
+          },
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Text": "REDACTED-Text"
+            }
+          }
+        ]
+      },
+      "state": "Active",
+      "flags": [],
+      "create_time": "2024-06-22T16:21:37",
+      "modify_time": "2024-06-22T16:28:52"
+    },
+    {
+      "id": "item-2",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "content": {
+        "title": "REDACTED-title",
+        "note": "",
+        "item_uuid": "uuid-14",
+        "content": {
+          "CreditCard": {
+            "cardholder_name": "REDACTED-cardholder_name",
+            "card_type": "Unspecified",
+            "number": "SECRET-FIXTURE-number",
+            "verification_number": "SECRET-FIXTURE-verification_number",
+            "expiration_date": "REDACTED-expiration_date",
+            "pin": ""
+          }
+        },
+        "extra_fields": [
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Text": "REDACTED-Text"
+            }
+          },
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Text": "REDACTED-Text"
+            }
+          },
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Hidden": "SECRET-FIXTURE-Hidden"
+            }
+          },
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Hidden": "SECRET-FIXTURE-Hidden"
+            }
+          },
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Text": "REDACTED-Text"
+            }
+          }
+        ]
+      },
+      "state": "Active",
+      "flags": [],
+      "create_time": "2024-04-14T18:16:40",
+      "modify_time": "2026-07-14T07:40:46"
+    },
+    {
+      "id": "item-3",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "content": {
+        "title": "REDACTED-title",
+        "note": "",
+        "item_uuid": "uuid-14",
+        "content": {
+          "Custom": {
+            "sections": [
+              {
+                "section_name": "REDACTED-section_name",
+                "section_fields": [
+                  {
+                    "name": "REDACTED-name",
+                    "content": {
+                      "Hidden": "SECRET-FIXTURE-Hidden"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "extra_fields": [
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Hidden": "SECRET-FIXTURE-Hidden"
+            }
+          }
+        ]
+      },
+      "state": "Active",
+      "flags": [],
+      "create_time": "2025-04-10T08:54:01",
+      "modify_time": "2025-04-10T08:54:01"
+    },
+    {
+      "id": "item-4",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "content": {
+        "title": "REDACTED-title",
+        "note": "",
+        "item_uuid": "uuid-14",
+        "content": {
+          "Custom": {
+            "sections": [
+              {
+                "section_name": "REDACTED-section_name",
+                "section_fields": [
+                  {
+                    "name": "REDACTED-name",
+                    "content": {
+                      "Hidden": "SECRET-FIXTURE-Hidden"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "extra_fields": [
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Hidden": "SECRET-FIXTURE-Hidden"
+            }
+          }
+        ]
+      },
+      "state": "Active",
+      "flags": [],
+      "create_time": "2026-06-03T20:39:54",
+      "modify_time": "2026-06-03T20:39:54"
+    },
+    {
+      "id": "item-5",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "content": {
+        "title": "REDACTED-title",
+        "note": "SECRET-FIXTURE-note",
+        "item_uuid": "uuid-14",
+        "content": {
+          "Identity": {
+            "full_name": "",
+            "email": "REDACTED-email",
+            "phone_number": "",
+            "first_name": "REDACTED-first_name",
+            "middle_name": "",
+            "last_name": "",
+            "birthdate": "",
+            "gender": "",
+            "extra_personal_details": [],
+            "organization": "",
+            "street_address": "",
+            "zip_or_postal_code": "",
+            "city": "",
+            "state_or_province": "",
+            "country_or_region": "",
+            "floor": "",
+            "county": "",
+            "extra_address_details": [],
+            "social_security_number": "",
+            "passport_number": "",
+            "license_number": "",
+            "website": "",
+            "x_handle": "",
+            "second_phone_number": "",
+            "linkedin": "",
+            "reddit": "",
+            "facebook": "",
+            "yahoo": "",
+            "instagram": "",
+            "extra_contact_details": [],
+            "company": "",
+            "job_title": "",
+            "personal_website": "",
+            "work_phone_number": "",
+            "work_email": "",
+            "extra_work_details": [],
+            "extra_sections": []
+          }
+        },
+        "extra_fields": []
+      },
+      "state": "Active",
+      "flags": [],
+      "create_time": "2024-01-30T09:57:36",
+      "modify_time": "2025-08-28T16:55:15"
+    },
+    {
+      "id": "item-6",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "content": {
+        "title": "REDACTED-title",
+        "note": "",
+        "item_uuid": "uuid-14",
+        "content": {
+          "Identity": {
+            "full_name": "",
+            "email": "REDACTED-email",
+            "phone_number": "REDACTED-phone_number",
+            "first_name": "REDACTED-first_name",
+            "middle_name": "",
+            "last_name": "REDACTED-last_name",
+            "birthdate": "REDACTED-birthdate",
+            "gender": "REDACTED-gender",
+            "extra_personal_details": [],
+            "organization": "",
+            "street_address": "REDACTED-street_address",
+            "zip_or_postal_code": "REDACTED-zip_or_postal_code",
+            "city": "REDACTED-city",
+            "state_or_province": "",
+            "country_or_region": "REDACTED-country_or_region",
+            "floor": "",
+            "county": "",
+            "extra_address_details": [],
+            "social_security_number": "",
+            "passport_number": "",
+            "license_number": "",
+            "website": "",
+            "x_handle": "",
+            "second_phone_number": "",
+            "linkedin": "",
+            "reddit": "",
+            "facebook": "",
+            "yahoo": "",
+            "instagram": "",
+            "extra_contact_details": [],
+            "company": "",
+            "job_title": "",
+            "personal_website": "",
+            "work_phone_number": "",
+            "work_email": "",
+            "extra_work_details": [],
+            "extra_sections": []
+          }
+        },
+        "extra_fields": []
+      },
+      "state": "Active",
+      "flags": [],
+      "create_time": "2024-04-12T09:20:35",
+      "modify_time": "2026-08-11T06:45:35"
+    },
+    {
+      "id": "item-7",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "content": {
+        "title": "REDACTED-title",
+        "note": "",
+        "item_uuid": "uuid-14",
+        "content": {
+          "Login": {
+            "email": "REDACTED-email",
+            "username": "",
+            "password": "SECRET-FIXTURE-password",
+            "urls": [
+              "REDACTED-urls"
+            ],
+            "totp_uri": "",
+            "passkeys": []
+          }
+        },
+        "extra_fields": [
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Text": "REDACTED-Text"
+            }
+          },
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Text": "REDACTED-Text"
+            }
+          },
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Text": "REDACTED-Text"
+            }
+          },
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Text": "REDACTED-Text"
+            }
+          }
+        ]
+      },
+      "state": "Active",
+      "flags": [],
+      "create_time": "2024-01-03T10:11:59",
+      "modify_time": "2024-01-03T10:11:59"
+    },
+    {
+      "id": "item-8",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "content": {
+        "title": "REDACTED-title",
+        "note": "SECRET-FIXTURE-note",
+        "item_uuid": "uuid-14",
+        "content": {
+          "Login": {
+            "email": "REDACTED-email",
+            "username": "",
+            "password": "SECRET-FIXTURE-password",
+            "urls": [],
+            "totp_uri": "",
+            "passkeys": []
+          }
+        },
+        "extra_fields": [
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Text": "REDACTED-Text"
+            }
+          },
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Text": "REDACTED-Text"
+            }
+          },
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Text": "REDACTED-Text"
+            }
+          },
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Text": "REDACTED-Text"
+            }
+          }
+        ]
+      },
+      "state": "Active",
+      "flags": [],
+      "create_time": "2024-01-03T10:11:59",
+      "modify_time": "2024-01-03T10:11:59"
+    },
+    {
+      "id": "item-9",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "content": {
+        "title": "REDACTED-title",
+        "note": "SECRET-FIXTURE-note",
+        "item_uuid": "uuid-14",
+        "content": {
+          "Note": null
+        },
+        "extra_fields": []
+      },
+      "state": "Active",
+      "flags": [],
+      "create_time": "2025-12-13T12:37:57",
+      "modify_time": "2025-12-13T12:37:57"
+    },
+    {
+      "id": "item-10",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "content": {
+        "title": "REDACTED-title",
+        "note": "SECRET-FIXTURE-note",
+        "item_uuid": "uuid-14",
+        "content": {
+          "Note": null
+        },
+        "extra_fields": []
+      },
+      "state": "Active",
+      "flags": [
+        "REDACTED-flags",
+        "REDACTED-flags"
+      ],
+      "create_time": "2024-08-26T21:20:07",
+      "modify_time": "2024-08-27T13:12:01"
+    },
+    {
+      "id": "item-11",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "content": {
+        "title": "REDACTED-title",
+        "note": "",
+        "item_uuid": "uuid-14",
+        "content": {
+          "SshKey": {
+            "private_key": "SECRET-FIXTURE-private_key",
+            "public_key": "REDACTED-public_key",
+            "sections": [
+              {
+                "section_name": "REDACTED-section_name",
+                "section_fields": [
+                  {
+                    "name": "REDACTED-name",
+                    "content": {
+                      "Hidden": "SECRET-FIXTURE-Hidden"
+                    }
+                  },
+                  {
+                    "name": "REDACTED-name",
+                    "content": {
+                      "Hidden": "SECRET-FIXTURE-Hidden"
+                    }
+                  },
+                  {
+                    "name": "REDACTED-name",
+                    "content": {
+                      "Text": "REDACTED-Text"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "extra_fields": [
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Hidden": "SECRET-FIXTURE-Hidden"
+            }
+          }
+        ]
+      },
+      "state": "Active",
+      "flags": [],
+      "create_time": "2024-01-30T09:51:39",
+      "modify_time": "2024-12-31T16:45:16"
+    },
+    {
+      "id": "item-12",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "content": {
+        "title": "REDACTED-title",
+        "note": "",
+        "item_uuid": "uuid-14",
+        "content": {
+          "SshKey": {
+            "private_key": "SECRET-FIXTURE-private_key",
+            "public_key": "REDACTED-public_key",
+            "sections": [
+              {
+                "section_name": "REDACTED-section_name",
+                "section_fields": [
+                  {
+                    "name": "REDACTED-name",
+                    "content": {
+                      "Hidden": "SECRET-FIXTURE-Hidden"
+                    }
+                  },
+                  {
+                    "name": "REDACTED-name",
+                    "content": {
+                      "Hidden": "SECRET-FIXTURE-Hidden"
+                    }
+                  },
+                  {
+                    "name": "REDACTED-name",
+                    "content": {
+                      "Text": "REDACTED-Text"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "extra_fields": [
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Text": "REDACTED-Text"
+            }
+          },
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Hidden": "SECRET-FIXTURE-Hidden"
+            }
+          },
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Hidden": "SECRET-FIXTURE-Hidden"
+            }
+          },
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Hidden": "SECRET-FIXTURE-Hidden"
+            }
+          }
+        ]
+      },
+      "state": "Active",
+      "flags": [],
+      "create_time": "2025-01-23T07:29:23",
+      "modify_time": "2025-11-24T11:08:08"
+    },
+    {
+      "id": "item-13",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "content": {
+        "title": "REDACTED-title",
+        "note": "",
+        "item_uuid": "uuid-14",
+        "content": {
+          "Wifi": {
+            "ssid": "REDACTED-ssid",
+            "password": "SECRET-FIXTURE-password",
+            "security": "UnspecifiedWifiSecurity",
+            "sections": []
+          }
+        },
+        "extra_fields": []
+      },
+      "state": "Active",
+      "flags": [],
+      "create_time": "2024-09-01T11:06:33",
+      "modify_time": "2026-02-12T14:53:28"
+    },
+    {
+      "id": "item-14",
+      "share_id": "share-1",
+      "vault_id": "vault-1",
+      "content": {
+        "title": "REDACTED-title",
+        "note": "",
+        "item_uuid": "uuid-14",
+        "content": {
+          "Login": {
+            "email": "",
+            "username": "",
+            "password": "SECRET-FIXTURE-password",
+            "urls": [],
+            "totp_uri": "",
+            "passkeys": []
+          }
+        },
+        "extra_fields": [
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Text": "REDACTED-Text"
+            }
+          },
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Text": "REDACTED-Text"
+            }
+          },
+          {
+            "name": "REDACTED-name",
+            "content": {
+              "Text": "REDACTED-Text"
+            }
+          }
+        ]
+      },
+      "state": "Trashed",
+      "flags": [],
+      "create_time": "2024-01-03T10:11:59",
+      "modify_time": "2025-07-03T14:55:32"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{"items":[
+  {"id":"login-github","share_id":"share-a","vault_id":"vault-a","state":"Active","flags":[],"create_time":"2026-01-02T03:04:05","modify_time":"2026-02-03T04:05:06","title":"GitHub","item_type":"login"},
+  {"id":"card-visa","share_id":"share-a","vault_id":"vault-a","state":"Active","flags":[],"create_time":"2026-01-02T03:04:05","modify_time":"2026-01-07T00:00:00","title":"Visa","item_type":"credit_card"},
+  {"id":"ssh-server","share_id":"share-a","vault_id":"vault-a","state":"Active","flags":[],"create_time":"2026-01-02T03:04:05","modify_time":"2026-01-11T00:00:00","title":"Build server key","item_type":"ssh_key"},
+  {"id":"login-old","share_id":"share-a","vault_id":"vault-a","state":"Trashed","flags":[],"create_time":"2026-01-02T03:04:05","modify_time":"2026-01-08T00:00:00","title":"Trashed Login","item_type":"login"}
+]}
