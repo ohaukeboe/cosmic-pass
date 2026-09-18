@@ -28,6 +28,9 @@ pub fn search_field(model: &Model) -> Element<'_, Message> {
         .on_paste(|q| Message::Core(Msg::QueryChanged(q)))
         .on_submit(|_| Message::Submit)
         .id(SEARCH_INPUT.clone())
+        // The popup owns the keyboard while it is open, so the field is always the target;
+        // an explicit focus task can race with layer-surface creation and be lost.
+        .always_active()
         .width(Length::Fill);
     let mut header = row::with_capacity(2)
         .push(input)

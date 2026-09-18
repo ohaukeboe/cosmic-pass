@@ -88,6 +88,8 @@ pub struct CosmicPass {
     deps: Deps,
     surface: surface::Surface,
     last_press: Option<(usize, Instant)>,
+    /// Last session state logged, so transitions are logged once.
+    session_log: crate::core::state::SessionState,
 }
 
 const DOUBLE_CLICK: Duration = Duration::from_millis(400);
@@ -133,10 +135,93 @@ fn now() -> i64 {
         .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
 }
 
+/// Updates and view builds slower than this are logged at debug level.
+/// Override with `COSMIC_PASS_SLOW_MS` when profiling.
+static SLOW_UPDATE: std::sync::LazyLock<Duration> = std::sync::LazyLock::new(|| {
+    let ms = std::env::var("COSMIC_PASS_SLOW_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5);
+    Duration::from_millis(ms)
+});
+
+/// Variant name only; messages may carry secrets.
+fn message_name(message: &Message) -> &'static str {
+    match message {
+        Message::Core(msg) => msg_name(msg),
+        Message::Key(_) => "Key",
+        Message::Layer(..) => "Layer",
+        Message::Submit => "Submit",
+        Message::RowPressed(_) => "RowPressed",
+        Message::OpenUrl(_) => "OpenUrl",
+        Message::Nothing => "Nothing",
+    }
+}
+
+fn msg_name(msg: &Msg) -> &'static str {
+    match msg {
+        Msg::QueryChanged(_) => "QueryChanged",
+        Msg::DataLoaded(_) => "DataLoaded",
+        Msg::CacheLoaded(_) => "CacheLoaded",
+        Msg::Tick(_) => "Tick",
+        Msg::PrefsLoaded(_) => "PrefsLoaded",
+        _ => "other",
+    }
+}
+
 impl CosmicPass {
     fn dispatch(&mut self, msg: Msg) -> Task<Message> {
         let effects = self.model.update(msg, now());
+        if self.session_log != self.model.session {
+            tracing::debug!(from = ?self.session_log, to = ?self.model.session, "session");
+            self.session_log = self.model.session.clone();
+        }
         Task::batch(effects.into_iter().map(|e| self.run_effect(e)))
+    }
+
+    fn update_inner(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::Core(msg) => self.dispatch(msg),
+            Message::Key(press) => self.on_key(&press),
+            Message::Layer(LayerEvent::Unfocused, id) if id == self.surface.id => {
+                self.dispatch(Msg::Hide)
+            }
+            // Focus follows the surface: an early focus task can be lost while the layer
+            // surface is still being created, and `always_active` alone is not reliable.
+            Message::Layer(LayerEvent::Focused, id) if id == self.surface.id => {
+                cosmic::widget::text_input::focus(surface::SEARCH_INPUT.clone())
+            }
+            Message::Layer(..) => Task::none(),
+            // Enter is handled through the key map so it respects configured shortcuts.
+            Message::Submit | Message::Nothing => Task::none(),
+            Message::OpenUrl(url) => {
+                let open = task::future(async move {
+                    let status = tokio::process::Command::new("xdg-open")
+                        .arg(&url)
+                        .stdin(std::process::Stdio::null())
+                        .status()
+                        .await;
+                    if let Err(e) = status {
+                        tracing::warn!("could not open {url}: {e}");
+                    }
+                    Message::Nothing
+                });
+                Task::batch([open, self.dispatch(Msg::Hide)])
+            }
+            Message::RowPressed(i) => {
+                let double = self
+                    .last_press
+                    .is_some_and(|(row, at)| row == i && at.elapsed() < DOUBLE_CLICK);
+                self.last_press = Some((i, Instant::now()));
+                let select = self.dispatch(Msg::Select(i));
+                if double {
+                    self.last_press = None;
+                    select.chain(self.dispatch(Msg::CopyPrimary))
+                } else {
+                    select
+                }
+            }
+        }
     }
 
     fn run_effect(&mut self, effect: Effect) -> Task<Message> {
@@ -284,6 +369,7 @@ impl cosmic::Application for CosmicPass {
             deps,
             surface: surface::Surface::default(),
             last_press: None,
+            session_log: crate::core::state::SessionState::Unknown,
         };
         let mut tasks = vec![app.dispatch(Msg::Startup)];
         if !matches!(
@@ -296,43 +382,33 @@ impl cosmic::Application for CosmicPass {
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
-        match message {
-            Message::Core(msg) => self.dispatch(msg),
-            Message::Key(press) => self.on_key(&press),
-            Message::Layer(LayerEvent::Unfocused, id) if id == self.surface.id => {
-                self.dispatch(Msg::Hide)
-            }
-            Message::Layer(..) => Task::none(),
-            // Enter is handled through the key map so it respects configured shortcuts.
-            Message::Submit | Message::Nothing => Task::none(),
-            Message::OpenUrl(url) => {
-                let open = task::future(async move {
-                    let status = tokio::process::Command::new("xdg-open")
-                        .arg(&url)
-                        .stdin(std::process::Stdio::null())
-                        .status()
-                        .await;
-                    if let Err(e) = status {
-                        tracing::warn!("could not open {url}: {e}");
-                    }
-                    Message::Nothing
-                });
-                Task::batch([open, self.dispatch(Msg::Hide)])
-            }
-            Message::RowPressed(i) => {
-                let double = self
-                    .last_press
-                    .is_some_and(|(row, at)| row == i && at.elapsed() < DOUBLE_CLICK);
-                self.last_press = Some((i, Instant::now()));
-                let select = self.dispatch(Msg::Select(i));
-                if double {
-                    self.last_press = None;
-                    select.chain(self.dispatch(Msg::CopyPrimary))
-                } else {
-                    select
-                }
-            }
+        let started = Instant::now();
+        let name = message_name(&message);
+        let task = self.update_inner(message);
+        let elapsed = started.elapsed();
+        if elapsed > *SLOW_UPDATE {
+            tracing::debug!("slow update: {name} took {elapsed:?}");
         }
+        task
+    }
+
+    fn view(&self) -> Element<'_, Message> {
+        cosmic::widget::space::vertical().into()
+    }
+
+    fn view_window(&self, id: window::Id) -> Element<'_, Message> {
+        tracing::debug!(?id, surface = ?self.surface.id, "view_window");
+        let started = Instant::now();
+        let element = if id == self.surface.id {
+            view::popup(&self.model, now())
+        } else {
+            cosmic::widget::space::vertical().into()
+        };
+        let elapsed = started.elapsed();
+        if elapsed > *SLOW_UPDATE {
+            tracing::debug!("slow view: building took {elapsed:?}");
+        }
+        element
     }
 
     fn dbus_activation(&mut self, msg: cosmic::dbus_activation::Message) -> Task<Message> {
@@ -359,18 +435,6 @@ impl cosmic::Application for CosmicPass {
         }
     }
 
-    fn view(&self) -> Element<'_, Message> {
-        cosmic::widget::space::vertical().into()
-    }
-
-    fn view_window(&self, id: window::Id) -> Element<'_, Message> {
-        if id == self.surface.id {
-            view::popup(&self.model, now())
-        } else {
-            cosmic::widget::space::vertical().into()
-        }
-    }
-
     fn subscription(&self) -> Subscription<Message> {
         let ticking = self.model.view.visible && self.model.view.totp.is_some();
         let tick = if ticking {
@@ -385,6 +449,7 @@ impl cosmic::Application for CosmicPass {
             cosmic::iced::Event::Keyboard(keyboard::Event::KeyPressed {
                 key, modifiers, ..
             }) => {
+                tracing::debug!(?key, ?status, window = ?_window, "key event");
                 // Let the text field handle editing keys it consumed.
                 let plain_char = matches!(key, Key::Character(_)) && !modifiers.control();
                 if plain_char && status == event::Status::Captured {

@@ -42,10 +42,22 @@ pub fn execute(effect: Effect, deps: &Deps, model: &Model) -> Step {
         Effect::Refresh => {
             let backend = deps.backend.clone();
             future(async move {
-                Some(match backend.list_all().await {
-                    Ok(listing) => Msg::DataLoaded(listing),
-                    Err(e) => Msg::RefreshFailed(e),
-                })
+                let started = std::time::Instant::now();
+                let result = backend.list_all().await;
+                match result {
+                    Ok(listing) => {
+                        tracing::debug!(
+                            items = listing.items.len(),
+                            "listed items in {:?}",
+                            started.elapsed()
+                        );
+                        Some(Msg::DataLoaded(listing))
+                    }
+                    Err(e) => {
+                        tracing::warn!("refresh failed after {:?}: {e}", started.elapsed());
+                        Some(Msg::RefreshFailed(e))
+                    }
+                }
             })
         }
         Effect::FetchAndCopy {

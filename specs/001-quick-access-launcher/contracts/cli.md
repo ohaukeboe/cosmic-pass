@@ -35,6 +35,7 @@ Provided by libcosmic `single-instance`:
 | `COSMIC_PASS_CACHE_DIR` | Cache directory (tests). | `$XDG_CACHE_HOME/cosmic-pass` |
 | `COSMIC_PASS_NO_KEYRING` | `1` = treat keyring as unavailable (tests, privacy). | unset |
 | `COSMIC_PASS_CLIPBOARD_HELPER` | Program run instead of `cosmic-pass clipboard-serve` (tests). | unset |
+| `COSMIC_PASS_SLOW_MS` | Log reducer updates and view builds slower than this many ms at debug level. | `5` |
 
 ## `clipboard-serve` offer
 
