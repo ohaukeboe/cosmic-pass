@@ -47,7 +47,7 @@ pub fn view(model: &Model, selected: usize) -> Element<'_, Message> {
             .push(space::horizontal().width(Length::Fill))
             .push(text::caption(shortcut));
         button::custom(line)
-            .class(cosmic::theme::Button::MenuItem)
+            .class(cosmic::theme::Button::ListItem(super::list::row_radii()))
             .selected(i == selected)
             .width(Length::Fill)
             .padding([6, 12])
