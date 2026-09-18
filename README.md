@@ -13,7 +13,9 @@ popup is gone.
 ## Requirements
 
 - COSMIC desktop (Wayland).
-- `pass-cli` 2.3 or newer on `PATH`, signed in (`pass-cli login`).
+- A signed-in `pass-cli` (`pass-cli login`). The flake package supplies `proton-pass-cli`, so
+  you only need to install it yourself for a non-flake build, or to override the bundled one
+  with a different version — a `pass-cli` on `PATH` takes precedence. 2.3 or newer.
 - A Secret Service provider (for example gnome-keyring) for the encrypted item cache.
 - A non-sandboxed install: the clipboard helper needs the Wayland data-control protocol.
 

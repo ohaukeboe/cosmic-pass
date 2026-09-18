@@ -84,8 +84,14 @@
             substituteInPlace $out/lib/systemd/user/cosmic-pass.service \
               --replace-fail '%h/.local/bin/cosmic-pass' "$out/bin/cosmic-pass"
 
+            # `--suffix`, not `--prefix`: a `pass-cli` the user already has on PATH still wins,
+            # so this only supplies one when the environment offers none. A NixOS user unit is
+            # exactly that case — `systemd.user.services.<name>.path` replaces the inherited
+            # PATH with a minimal one, which left the resident process reporting the tool as
+            # missing however the user had installed it.
             wrapProgram $out/bin/cosmic-pass \
-              --prefix LD_LIBRARY_PATH : "${pkgs.lib.makeLibraryPath (runtimeLibs pkgs)}"
+              --prefix LD_LIBRARY_PATH : "${pkgs.lib.makeLibraryPath (runtimeLibs pkgs)}" \
+              --suffix PATH : "${pkgs.lib.makeBinPath [ pkgs.proton-pass-cli ]}"
           '';
 
           meta = {
@@ -93,7 +99,7 @@
             longDescription = ''
               A keyboard-driven popup that searches Proton Pass items and copies passwords,
               usernames and one-time codes to the clipboard. Unofficial; it drives the official
-              pass-cli tool, which must be installed and signed in separately.
+              pass-cli tool, which ships with this package and must be signed in separately.
             '';
             homepage = "https://github.com/ohaukeboe/cosmic-pass";
             license = pkgs.lib.licenses.mit;

@@ -257,8 +257,10 @@ with an action to start sign-in is shown.
   built in Rust with the iced toolkit, matching COSMIC's native look. Other desktops are out
   of scope for v1.
 - **Dependency (from request)**: All communication with Proton Pass goes through the official
-  Proton Pass command-line tool (`pass-cli`), which the user installs and signs in to. The app
-  does not talk to Proton servers directly and does not store Proton credentials.
+  Proton Pass command-line tool (`pass-cli`), which the user signs in to. The app does not talk
+  to Proton servers directly and does not store Proton credentials. The flake package supplies
+  `proton-pass-cli` as a fallback on `PATH`, so the tool is present however the process is
+  started; a `pass-cli` the user already has on `PATH` takes precedence over it.
 - The app runs as a lightweight background process started with the user session, so the
   window can appear instantly; the system shortcut only toggles the window.
 - The system-wide shortcut is registered through the desktop's standard shortcut settings.
