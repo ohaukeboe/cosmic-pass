@@ -64,9 +64,9 @@ confirmed from docs or source and each has a validation step in [quickstart.md](
   |---------|---------|
   | Session / account | `pass-cli info --output json` |
   | Vaults | `pass-cli vault list --output json` |
-  | Items per vault | `pass-cli item list --share-id <ID> --filter-state active --output json` |
-  | One field | `pass-cli item view pass://<SHARE>/<ITEM>/<FIELD> --output json` |
-  | One-time code | `pass-cli item totp pass://<SHARE>/<ITEM> --output json` |
+  | Items per vault | `pass-cli item list --share-id=<ID> --output json --show-secrets` |
+  | One field | `pass-cli item view --share-id=<S> --item-id=<I> --field=<F>` |
+  | One-time code | `pass-cli item totp --share-id=<S> --item-id=<I> --output json` |
   | Sign in | `pass-cli login` (web flow) |
 
   Full contract: [contracts/pass-cli.md](./contracts/pass-cli.md).
@@ -75,30 +75,32 @@ confirmed from docs or source and each has a validation step in [quickstart.md](
 - **Facts found**:
   - `item list` takes one vault per call; no all-vaults listing exists. List vaults, then
     list items per vault in parallel.
-  - Field URI format: `pass://SHARE_ID/ITEM_ID[/FIELD]`. Standard fields: `username`,
-    `password`, `email`, `url`, `note`; login TOTP field `totp`; custom fields by name.
+  - Field names are the JSON keys of the item content (`password`, `number`, `totp_uri`,
+    `private_key`, custom field names). Empty fields report `Field does not exist`.
   - `item totp --output json` returns a map `{ "<field name>": "<code>" }` with no period.
     Countdown is computed locally assuming a 30 s period.
-  - All errors exit with code 1. Errors are told apart by the stderr line starting
-    `Error:`. Signed out: `Error: This operation requires an authenticated client`.
+  - All errors exit with code 1. Errors are told apart by stderr text.
+    Signed out: `Error: This operation requires an authenticated client`.
   - Logs go to stderr; `PASS_LOG_LEVEL=off` silences them.
   - `pass-cli login` (web) tries to open a browser and prints the URL on failure; no TTY
     required *(inferred)*.
   - Share IDs can change across sessions. Cache keys MUST be re-validated after each refresh.
-- **Risk — JSON schema undocumented**: Output shapes for `vault list`, `item list`, and
-  `item view` are not documented, and no signed-in session was available during research.
-  - Mitigation: parse leniently (`#[serde(default)]`, unknown fields ignored, fields read by
-    several candidate names). Capture real output into `tests/fixtures/` as the first
-    implementation task (quickstart step V1).
-  - If the plain `item list` omits usernames/URLs/TOTP flags, use `--show-secrets` and strip
-    every secret field inside the parser before the data leaves the `pass` module. The raw
-    output buffer is held in a zeroizing buffer and dropped immediately (FR-014, FR-025).
+- **JSON schema (confirmed 2026-09-17, quickstart V1)**: shapes are recorded in
+  [contracts/pass-cli.md](./contracts/pass-cli.md) and `tests/fixtures/pass-cli/captured/`.
+  Key findings:
+  - Plain `item list` lacks username, URLs, and TOTP data, so the app uses
+    `--show-secrets` and strips every secret inside the parser. The raw output buffer is
+    zeroized and dropped immediately (FR-014, FR-025).
+  - Item kind is the single key of `content.content` (`Login`, `Note`, `CreditCard`, ...).
+  - `item view --field` prints the raw value, not JSON. Non-secret fields (username, email,
+    URL) are copied from the summary without a `pass-cli` call.
+  - Share IDs can start with `-`; every ID is passed as `--flag=VALUE`.
+  - Errors are `Error: ...` plus a `Caused by:` chain; the classifier matches the whole text.
 - **Invocation environment**: `PASS_LOG_LEVEL=off`, `PROTON_PASS_NO_UPDATE_CHECK=1`,
   `stdin` null, `kill_on_drop(true)`, own process group. Timeouts: 20 s for listing, 10 s
   for field reads. At most 4 concurrent `pass-cli` processes (semaphore).
-- **Error classification** (stderr `Error:` line): `requires an authenticated client` →
-  `SignedOut`; `locked` → `Locked` *(inferred text)*; connection/timeout strings →
-  `Network`; spawn `NotFound` → `CliMissing`; anything else → `Cli { message }`.
+- **Error classification**: see the ordered table in
+  [contracts/pass-cli.md](./contracts/pass-cli.md#error-mapping).
 - **Alternatives considered**: Talking to Proton's API directly (rejected by request and far
   more security-sensitive); `pass-cli run`/`inject` (built for env/file injection, not
   interactive lookup).
@@ -201,10 +203,11 @@ confirmed from docs or source and each has a validation step in [quickstart.md](
   - Integration tests: `tests/` against `tests/fixtures/fake-pass-cli` (shell script driven
     by env vars and fixture JSON), pointed to via `COSMIC_PASS_CLI` env override.
   - Snapshots: `insta` for parsed `pass-cli` fixtures.
-  - UI: `iced_test` for keyboard flows if it accepts `cosmic::Element` at the pinned rev;
-    otherwise reducer tests plus manual quickstart checks for layer-shell behavior.
+  - UI: `iced_test` does not compile against the pinned libcosmic (see V2), so UI behavior is
+    covered by reducer and acceptance tests plus manual quickstart checks.
   - Benchmark: search over 5,000 generated items, asserted under 50 ms (SC-002) in a test
-    marked `#[ignore]` for debug builds and run in `just bench`.
+    marked `#[ignore]` and run in `just bench`. Measured 2026-09-17: p95 0.6 ms per search,
+    0.7 ms per reducer update.
 - **Rationale**: Satisfies constitution Quality Standards (single commands, reproducible
   environment) and Principles II–III.
 
@@ -212,7 +215,7 @@ confirmed from docs or source and each has a validation step in [quickstart.md](
 
 | ID | Item | Validated in |
 |----|------|--------------|
-| V1 | Real `pass-cli` JSON shapes and error texts | quickstart V1 (first task) |
-| V2 | `iced_test` works with libcosmic elements | quickstart V6 |
-| V3 | Selection clears when helper is killed; hint mime offered | quickstart V4 |
+| V1 | Real `pass-cli` JSON shapes and error texts | Done 2026-09-17 (locked-session text still unobserved) |
+| V2 | `iced_test` works with libcosmic elements | **No** (2026-09-17): at libcosmic `87ab817` the `iced_test` crate in the pop-os iced fork does not compile (`renderer::Style` gained `icon_color`/`scale_factor`, `runtime::Action` gained `Dnd`/`PlatformSpecific`). UI behavior stays covered by reducer tests plus quickstart V2–V6. Re-check when libcosmic is bumped. |
+| V3 | Selection clears when helper is killed; hint mime offered | **Yes** (2026-09-17): killing the helper leaves "Nothing is copied"; the helper exits when another client copies; `x-kde-passwordManagerHint=secret` is offered. |
 | V4 | `pass-cli login` needs no TTY | quickstart V5 |

@@ -15,7 +15,7 @@ Preferences (FR-027, [config.md](./config.md)). Defaults below.
 | `Ctrl+U` | Copy username (or email if no username), close | yes (`copy_username`) |
 | `Ctrl+O` | Copy current one-time code, close | yes (`copy_totp`) |
 | `Ctrl+L` | Copy first website, close | yes (`copy_url`) |
-| `Tab`, `Right` (caret at end of query) | Open action list | yes (`open_actions`) |
+| `Tab`; `Right` when the query is empty | Open action list | yes (`open_actions`) |
 | `Ctrl+I` | Open detail pane | yes (`open_detail`) |
 | `F5` | Refresh data | yes (`refresh`) |
 | `Ctrl+,` | Open preferences | yes (`preferences`) |

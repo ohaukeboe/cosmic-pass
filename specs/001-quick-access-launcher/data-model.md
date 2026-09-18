@@ -35,11 +35,12 @@ Unknown kinds from newer `pass-cli` versions are kept and shown with a generic i
 | `vault_name` | `String` | Copied from `Vault` for display and search. |
 | `kind` | `ItemKind` | Required. |
 | `title` | `String` | Required; empty titles shown as "(untitled)". |
-| `subtitle` | `Option<String>` | Username/email for logins, card holder for cards, alias address for aliases. Never note content or any secret. |
+| `username` | `Option<String>` | Login username (empty strings become `None`). |
+| `email` | `Option<String>` | Login or identity email. |
+| `subtitle` | `Option<String>` | Username (else email) for logins, card holder for cards, full name for identities, SSID for Wi-Fi. Never note content or any secret. |
 | `urls` | `Vec<String>` | Login websites. Search uses the host part. |
-| `has_totp` | `bool` | True if the item has at least one TOTP field. |
-| `totp_fields` | `Vec<String>` | TOTP field names, for the action list. |
-| `custom_fields` | `Vec<FieldRef>` | Names and hidden flag of custom fields; never values. |
+| `totp_fields` | `Vec<String>` | TOTP field names (`totp_uri` for the login code, custom TOTP names). `has_totp()` is `!totp_fields.is_empty()`. |
+| `fields` | `Vec<FieldRef>` | Copyable standard and custom fields in display order, excluding TOTP fields. |
 | `modified_at` | `i64` (unix s) | For tie-breaking and change detection. |
 
 Validation:
@@ -55,6 +56,7 @@ Validation:
 | `name` | `String` | `pass-cli` field name (`username`, `password`, `totp`, custom name, `Section.field`). |
 | `label` | `String` | Human label for the action list. |
 | `secret` | `bool` | Masked in UI; triggers clipboard timeout on copy. |
+| `value` | `Option<String>` | Only for non-secret standard fields (username, email, first URL, card holder, expiry, SSID, public key): copied without calling `pass-cli`. `None` for secrets and for custom `Text` fields (fetched on demand, no timeout). |
 
 ## CopyAction
 
@@ -68,9 +70,9 @@ Derived per item kind (FR-011–FR-013):
 | Alias | alias email | `note` |
 | Identity, SshKey, Wifi, Custom | first secret custom/standard field; else first field | all fields |
 
-`CopyAction = { key: ItemKey, source: CopySource }` where
-`CopySource = Field(FieldRef) | Totp { field: String } | Url(String)`.
-`Url` needs no `pass-cli` call (value already in summary, non-secret).
+`CopySource = Field(FieldRef) | Totp { field: String }`. A `Field` with a stored `value`
+needs no `pass-cli` call. Action-list entries are `ActionEntry { source, label, shortcut }`,
+primary first, then fields in order, then TOTP fields.
 
 ## SecretValue (never cached, never logged)
 
@@ -115,12 +117,13 @@ any ─network error─▶ state unchanged, data.stale = true
 
 | Field | Type | Rules |
 |-------|------|-------|
-| `vaults` | `Vec<Vault>` | Sorted by name. |
+| `vaults` | `Vec<Vault>` | In `pass-cli` order. |
 | `items` | `Vec<ItemSummary>` | All active items across vaults. |
 | `fetched_at` | `Option<i64>` | Last successful full refresh. |
 | `stale` | `bool` | True if last refresh failed or data came from cache and refresh is pending. |
 | `refreshing` | `bool` | A refresh task is in flight. Only one at a time. |
 | `source` | `Memory \| DiskCache` | For the stale indicator text. |
+| `cached_at` | `Option<i64>` | `fetched_at` recorded in the loaded cache file. |
 
 Refresh replaces `items` atomically only after every vault listing succeeds. A partial
 failure keeps the old list and sets `stale`.
@@ -133,13 +136,14 @@ failure keeps the old list and sets `stale`.
 | `query` | `String` | Cleared on hide (FR-003). |
 | `results` | `Vec<ResultRow>` | Max 50. Recomputed on query or data change. |
 | `selected` | `usize` | Clamped to `results.len()`. Reset to 0 on query change. |
-| `mode` | `List \| Actions(ItemKey) \| Detail(ItemKey) \| Preferences` | Escape goes back one level; from `List` it hides. |
-| `pending` | `Option<PendingFetch>` | `{ key, action, cancel: CancellationToken }`. Escape cancels. |
+| `mode` | `List \| Actions { key, selected } \| Detail { key } \| Preferences { rebinding }` | Escape cancels a pending fetch or rebinding first, then goes back one level; from `List` it hides. |
+| `pending` | `Option<PendingFetch>` | `{ key, cancel: CancellationToken, secret }`. Escape cancels. |
 | `revealed` | `Option<SecretString>` | Detail pane only. Dropped on mode change or hide. |
 | `totp` | `Option<TotpDisplay>` | Detail pane only. |
 | `notice` | `Option<Notice>` | Inline message, e.g. "No one-time code for this item". Auto-clears after 3 s. |
 
-`ResultRow = { index_into_items: usize, score: u32, match_ranges: Vec<Range> }`.
+`ResultRow = { item: usize, score: u32, title_indices: Vec<u32> }` (`item` indexes
+`DataState.items`).
 
 ## ClipboardJob
 

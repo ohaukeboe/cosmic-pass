@@ -67,7 +67,7 @@ just check    # all pre-merge gates: fmt, clippy -D warnings, nextest, coverage 
 just fmt      # cargo fmt --check
 just lint     # cargo clippy --all-targets --all-features -- -D warnings
 just test     # cargo nextest run
-just cov      # coverage via cargo llvm-cov (src/main.rs excluded)
+just cov      # coverage via cargo llvm-cov (main.rs and libcosmic view glue excluded)
 just run      # run the app (pass extra args after `run`)
 just bench    # search benchmark (release build, ignored tests)
 ```
