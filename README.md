@@ -19,23 +19,73 @@ popup is gone.
 
 ## Install
 
-With flakes:
+Add the flake as an input:
 
-```bash
-nix profile install github:ohaukeboe/cosmic-pass
-systemctl --user enable --now cosmic-pass.service   # unit ships with the package
+```nix
+{
+  inputs = {
+    nixpkgs.url = "https://channels.nixos.org/nixos-unstable/nixexprs.tar.zst";
+    cosmic-pass = {
+      url = "github:ohaukeboe/cosmic-pass";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+
+  outputs =
+    { nixpkgs, cosmic-pass, ... }:
+    {
+      nixosConfigurations.your-host = nixpkgs.lib.nixosSystem {
+        modules = [
+          (
+            { pkgs, ... }:
+            let
+              cosmic-pass-pkg = cosmic-pass.packages.${pkgs.stdenv.hostPlatform.system}.default;
+            in
+            {
+              environment.systemPackages = [ cosmic-pass-pkg ];
+
+              # The package ships a user service; start it with the desktop session.
+              systemd.packages = [ cosmic-pass-pkg ];
+              systemd.user.services.cosmic-pass.wantedBy = [ "graphical-session.target" ];
+            }
+          )
+        ];
+      };
+    };
+}
 ```
 
-Or try it without installing: `nix run github:ohaukeboe/cosmic-pass`.
+With Home Manager, declare the service yourself:
 
-From a clone, without Nix profiles:
+```nix
+{ pkgs, cosmic-pass, ... }:
+let
+  cosmic-pass-pkg = cosmic-pass.packages.${pkgs.stdenv.hostPlatform.system}.default;
+in
+{
+  home.packages = [ cosmic-pass-pkg ];
 
-```bash
-nix develop        # or: direnv allow
-just install-user
-systemctl --user daemon-reload
-systemctl --user enable --now cosmic-pass.service
+  systemd.user.services.cosmic-pass = {
+    Unit = {
+      Description = "COSMIC Pass quick access for Proton Pass";
+      PartOf = [ "graphical-session.target" ];
+      After = [ "graphical-session.target" ];
+    };
+    Service = {
+      ExecStart = "${cosmic-pass-pkg}/bin/cosmic-pass --background";
+      Restart = "on-failure";
+    };
+    Install.WantedBy = [ "graphical-session.target" ];
+  };
+}
 ```
+
+The flake also exposes `overlays.default`, and `nix run github:ohaukeboe/cosmic-pass` runs it
+without installing anything.
+
+Not using Nix? From a clone, `nix develop` then `just install-user` installs the binary, desktop
+entry, icon and user service under `~/.local`, followed by
+`systemctl --user enable --now cosmic-pass.service`.
 
 Then add the shortcut: **COSMIC Settings → Keyboard → Keyboard Shortcuts → Custom → Add**,
 command `cosmic-pass`, keys `Super+Shift+P` (or any keys you like). Running `cosmic-pass`

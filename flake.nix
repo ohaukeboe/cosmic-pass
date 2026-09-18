@@ -77,10 +77,11 @@
             install -Dm644 data/icons/io.github.ohaukeboe.CosmicPass.svg \
               $out/share/icons/hicolor/scalable/apps/io.github.ohaukeboe.CosmicPass.svg
 
+            # lib/systemd/user is where NixOS's systemd.packages looks for user units.
             # The shipped unit points at ~/.local/bin; a flake install runs from the store.
             install -Dm644 data/cosmic-pass.service \
-              $out/share/systemd/user/cosmic-pass.service
-            substituteInPlace $out/share/systemd/user/cosmic-pass.service \
+              $out/lib/systemd/user/cosmic-pass.service
+            substituteInPlace $out/lib/systemd/user/cosmic-pass.service \
               --replace-fail '%h/.local/bin/cosmic-pass' "$out/bin/cosmic-pass"
 
             wrapProgram $out/bin/cosmic-pass \
