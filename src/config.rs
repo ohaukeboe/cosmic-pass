@@ -123,7 +123,9 @@ impl std::fmt::Display for KeyChord {
 
 pub const CLIPBOARD_CLEAR_RANGE: std::ops::RangeInclusive<u32> = 10..=600;
 pub const REFRESH_STALE_RANGE: std::ops::RangeInclusive<u32> = 30..=86_400;
-pub const MAX_RESULTS_RANGE: std::ops::RangeInclusive<u16> = 10..=200;
+/// Each rendered row costs layout and drawing time, so the default is small; raise it in
+/// the config file if you prefer a longer list.
+pub const MAX_RESULTS_RANGE: std::ops::RangeInclusive<u16> = 5..=200;
 
 #[derive(Debug, Clone, PartialEq, Eq, CosmicConfigEntry)]
 #[version = 1]
@@ -139,7 +141,7 @@ impl Default for Preferences {
         Self {
             clipboard_clear_secs: 90,
             refresh_stale_secs: 300,
-            max_results: 50,
+            max_results: 12,
             shortcuts: Action::ALL
                 .iter()
                 .map(|a| (*a, a.default_chord()))
@@ -213,7 +215,7 @@ mod tests {
         let p = Preferences::default();
         assert_eq!(p.clipboard_clear_secs, 90);
         assert_eq!(p.refresh_stale_secs, 300);
-        assert_eq!(p.max_results, 50);
+        assert_eq!(p.max_results, 12);
         assert_eq!(p.chord(Action::CopyPrimary), KeyChord::new(&[], "Enter"));
         assert_eq!(
             p.chord(Action::CopyTotp),
@@ -228,13 +230,13 @@ mod tests {
         let p = Preferences {
             clipboard_clear_secs: 1,
             refresh_stale_secs: 1_000_000,
-            max_results: 5,
+            max_results: 2,
             ..Preferences::default()
         }
         .validated();
         assert_eq!(p.clipboard_clear_secs, 10);
         assert_eq!(p.refresh_stale_secs, 86_400);
-        assert_eq!(p.max_results, 10);
+        assert_eq!(p.max_results, 5);
 
         let p = Preferences {
             clipboard_clear_secs: 601,

@@ -32,8 +32,12 @@ cov:
 # All pre-merge gates.
 check: fmt lint test cov
 
-# Run the app.
+# Run the app (release: debug builds render far too slowly to use).
 run *ARGS:
+    cargo run --release -- {{ARGS}}
+
+# Run an unoptimized build (slow rendering; for backtraces only).
+run-debug *ARGS:
     cargo run -- {{ARGS}}
 
 # Search benchmark (SC-002).

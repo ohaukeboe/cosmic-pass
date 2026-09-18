@@ -5,7 +5,7 @@ use nucleo_matcher::{Config, Matcher, Utf32String};
 
 use crate::model::{ItemKey, ItemSummary};
 
-pub const DEFAULT_MAX_RESULTS: usize = 50;
+pub const DEFAULT_MAX_RESULTS: usize = 12;
 
 /// One search hit.
 #[derive(Debug, Clone, PartialEq, Eq)]

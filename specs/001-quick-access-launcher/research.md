@@ -12,7 +12,11 @@ confirmed from docs or source and each has a validation step in [quickstart.md](
 
 - **Decision**: `libcosmic` (git dependency, pinned `rev`), which wraps the pop-os fork of iced
   0.14. Features: `winit`, `wayland`, `tokio`, `single-instance`, `dbus-config`, `autosize`,
-  `multi-window`.
+  `multi-window`, `wgpu`.
+- **Renderer**: `wgpu` (GPU). Measured 2026-09-18 with 572 real items: the default tiny-skia
+  CPU renderer redrew the 50-row list at ~46 ms per frame in a release build (far worse in a
+  debug build, where typing felt like seconds per keystroke). Rendering, not search, is the
+  cost: search is ~0.6 ms and the reducer update ~1 ms at that size.
 - **Rationale**: The request asks for iced on COSMIC. libcosmic is COSMIC's official iced-based
   toolkit (used by `cosmic-app-template` and `cosmic-launcher`). It gives native theming,
   layer-shell surfaces, single-instance D-Bus activation, and `cosmic-config`. iced is reached
@@ -219,3 +223,4 @@ confirmed from docs or source and each has a validation step in [quickstart.md](
 | V2 | `iced_test` works with libcosmic elements | **No** (2026-09-17): at libcosmic `87ab817` the `iced_test` crate in the pop-os iced fork does not compile (`renderer::Style` gained `icon_color`/`scale_factor`, `runtime::Action` gained `Dnd`/`PlatformSpecific`). UI behavior stays covered by reducer tests plus quickstart V2–V6. Re-check when libcosmic is bumped. |
 | V3 | Selection clears when helper is killed; hint mime offered | **Yes** (2026-09-17): killing the helper leaves "Nothing is copied"; the helper exits when another client copies; `x-kde-passwordManagerHint=secret` is offered. |
 | V4 | `pass-cli login` needs no TTY | quickstart V5 |
+| V5 | Typing reaches the search field | Fixed 2026-09-18: the field needs `always_active()` plus a focus task on `LayerEvent::Focused`; an early focus task alone is lost while the layer surface is being created. |

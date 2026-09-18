@@ -928,7 +928,12 @@ pub(crate) mod tests {
 
     #[test]
     fn selection_is_clamped() {
-        let mut m = loaded(many(15));
+        // Independent of the default result cap.
+        let mut m = Model::new(Preferences {
+            max_results: 50,
+            ..Preferences::default()
+        });
+        m.update(Msg::DataLoaded(listing(many(15))), 1_000);
         m.update(Msg::SelectPrev, 0);
         assert_eq!(m.view.selected, 0);
         m.update(Msg::PageDown, 0);
