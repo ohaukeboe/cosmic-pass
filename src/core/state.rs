@@ -725,6 +725,12 @@ impl Model {
                 self.session = SessionState::CliMissing;
                 vec![]
             }
+            // Every call fails until the user resets pass-cli's store, so say so in the panel
+            // rather than leaving a "may be out of date" line over items that never arrive.
+            PassError::LocalData => {
+                self.session = SessionState::Error(PassError::LocalData.to_string());
+                vec![]
+            }
             other => {
                 self.data.stale = true;
                 self.data.last_error = Some(RefreshError::of(&other));
@@ -2089,6 +2095,10 @@ pub(crate) mod tests {
             (PassError::Locked, SessionState::Locked),
             (PassError::CliMissing, SessionState::CliMissing),
             (
+                PassError::LocalData,
+                SessionState::Error(PassError::LocalData.to_string()),
+            ),
+            (
                 PassError::Cli {
                     message: "boom".into(),
                 },
@@ -2099,6 +2109,20 @@ pub(crate) mod tests {
             m.update(Msg::SessionProbed(Err(err.clone())), 0);
             assert_eq!(m.session, state, "{err:?}");
         }
+    }
+
+    /// A refresh that fails on pass-cli's own store must not pass for a Proton outage: the
+    /// saved items can never refresh until the user resets it, so the panel has to say so.
+    #[test]
+    fn local_database_failure_shows_the_recovery_panel() {
+        let mut m = loaded(vec![login("a", "A")]);
+        m.session = SessionState::SignedIn(account("a"));
+        m.update(Msg::RefreshFailed(PassError::LocalData), 0);
+        let SessionState::Error(message) = &m.session else {
+            panic!("expected an error panel, got {:?}", m.session);
+        };
+        assert!(message.contains("logout --force"), "{message}");
+        assert_ne!(m.data.last_error, Some(RefreshError::Unreachable));
     }
 
     #[test]

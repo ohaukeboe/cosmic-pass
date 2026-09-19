@@ -26,8 +26,9 @@ popup is gone.
   environment.sessionVariables.PROTON_PASS_LINUX_KEYRING = "dbus";
   ```
 
-  Changing the value with a session already stored makes `pass-cli` log itself out for safety;
-  sign in again afterwards.
+  Changing the value with a session already stored leaves `pass-cli` unable to read its own
+  database: it either logs itself out for safety or reports "file is not a database". Run
+  `pass-cli logout --force` and sign in again; the app says so in its panel when it hits this.
 - A non-sandboxed install: the clipboard helper needs the Wayland data-control protocol.
 
 ## Install

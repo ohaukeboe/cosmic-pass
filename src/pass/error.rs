@@ -14,6 +14,10 @@ pub enum PassError {
     Locked,
     #[error("network error while talking to Proton Pass")]
     Network,
+    #[error(
+        "pass-cli cannot open its local database; run `pass-cli logout --force` in a terminal, then sign in again"
+    )]
+    LocalData,
     #[error("pass-cli did not respond in time")]
     Timeout,
     #[error("item or vault not found")]
@@ -54,8 +58,20 @@ pub fn classify(failure: &Failure<'_>) -> PassError {
 
     let text = failure.stderr.to_lowercase();
     let has = |needles: &[&str]| needles.iter().any(|n| text.contains(n));
-    if has(&["requires an authenticated client", "there is no session"]) {
+    if has(&[
+        "requires an authenticated client",
+        "there is no session",
+        "forcing logout",
+    ]) {
         PassError::SignedOut
+    } else if has(&[
+        "file is not a database",
+        "logout --force",
+        "failed to initialize database",
+    ]) {
+        // pass-cli's own store, not Proton: its chain says "Failed to get database connection",
+        // which the network rule below would otherwise claim.
+        PassError::LocalData
     } else if has(&["field does not exist"]) {
         PassError::FieldMissing
     } else if has(&["locked"]) {
@@ -150,6 +166,28 @@ mod tests {
         let bad_id = "Error: Error listing items\n\nCaused by:\n    0: Error fetching items\n    \
                       1: Could not perform operation. Reason: IdFormat\n";
         assert_eq!(stderr(bad_id), PassError::NotFound);
+    }
+
+    /// Captured from pass-cli 2.3.3 when its database was keyed to a different keyring store.
+    /// Its cause chain says "database connection", which the network rule must not claim:
+    /// the app then told the user Proton Pass was unreachable instead of how to recover.
+    #[test]
+    fn local_database_failure_is_not_a_network_error() {
+        let text = "Error: Error creating client features\n\nCaused by:\n    \
+                    0: Failed to initialize database\n    1: Failed to get database connection\n    \
+                    2: Error occurred while creating a new object: Failed to open encrypted \
+                    database: file is not a database. The encryption key may not match or the \
+                    database may be corrupted. Try running 'pass-cli logout --force' to reset \
+                    local state.\n";
+        assert_eq!(stderr(text), PassError::LocalData);
+    }
+
+    /// pass-cli resets local state itself when its key is gone; the session is simply over.
+    #[test]
+    fn self_inflicted_force_logout_is_signed_out() {
+        let text = "Error: Local encryption key not found but local data exists. Forcing logout \
+                    for security.\nExecuting force logout\nSuccessfully performed force logout\n";
+        assert_eq!(stderr(text), PassError::SignedOut);
     }
 
     #[test]
