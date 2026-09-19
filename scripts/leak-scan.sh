@@ -34,14 +34,21 @@ if [ -z "${WAYLAND_DISPLAY:-}" ]; then
 elif [ "${COSMIC_PASS_NO_KEYRING:-}" = 1 ]; then
     skipped+=("encrypted cache: COSMIC_PASS_NO_KEYRING=1, so no cache file is written")
 else
+    # Built before the clock starts. `cargo run` inside the timeout spends most of it
+    # linking — the suite above builds with --all-features, so the default-feature binary
+    # is usually stale — and the app would be killed before the cache write, which is
+    # debounced 2 s after the listing lands.
+    cargo build --quiet >>"$work/tests.log" 2>&1
+    app="${CARGO_TARGET_DIR:-$root/target}/debug/cosmic-pass"
     COSMIC_PASS_CLI="$root/tests/fixtures/fake-pass-cli" \
         FAKE_FIXTURE_DIR="$root/tests/fixtures/pass-cli/synthetic" \
         COSMIC_SINGLE_INSTANCE=0 \
-        timeout 5 cargo run --quiet -- --background >"$work/app.log" 2>&1 || true
+        timeout 6 "$app" --background >"$work/app.log" 2>&1 || true
     # No cache file means the ciphertext below was never scanned: a locked or unreachable
-    # keyring keeps the app in memory-only mode (FR-024a).
+    # keyring keeps the app in memory-only mode (FR-024a), and so does a run cut short
+    # before the debounce.
     if ! find "$COSMIC_PASS_CACHE_DIR" -type f -print -quit 2>/dev/null | grep -q .; then
-        skipped+=("encrypted cache: no cache file was written (keyring locked or unavailable?)")
+        skipped+=("encrypted cache: no cache file was written (keyring locked, or the run ended before the 2 s debounce)")
     fi
 fi
 
