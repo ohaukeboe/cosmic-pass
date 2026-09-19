@@ -12,6 +12,17 @@ use super::error::PassError;
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
+/// Where `pass-cli` keeps the key to its own database, passed as `PROTON_PASS_LINUX_KEYRING`.
+///
+/// Its default, `kernel`, stores that key in the caller's kernel session keyring, and the key is
+/// readable only by processes that possess it. A systemd user service gets a session keyring of
+/// its own, so a key written by `pass-cli login` in a terminal is unreachable from the resident
+/// process: every call ended in `Error creating client features`, however healthy the session
+/// was. `dbus` puts the key in the Secret Service instead, which both reach. It must match the
+/// store the session was created with -- pass-cli force-logs-out when local data exists without
+/// a key -- so a terminal `pass-cli` wants the same value; see README.
+const KEYRING_STORE: &str = "dbus";
+
 /// Successful process output. Stdout may contain secrets and is wiped on drop.
 pub struct Output {
     pub stdout: Zeroizing<Vec<u8>>,
@@ -120,6 +131,7 @@ impl TokioRunner {
             .args(&args)
             .env("PASS_LOG_LEVEL", "off")
             .env("PROTON_PASS_NO_UPDATE_CHECK", "1")
+            .env("PROTON_PASS_LINUX_KEYRING", KEYRING_STORE)
             .envs(self.env.iter().map(|(k, v)| (k, v)))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
@@ -168,6 +180,7 @@ impl TokioRunner {
             .args(&args)
             .env("PASS_LOG_LEVEL", "off")
             .env("PROTON_PASS_NO_UPDATE_CHECK", "1")
+            .env("PROTON_PASS_LINUX_KEYRING", KEYRING_STORE)
             .envs(self.env.iter().map(|(k, v)| (k, v)))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())

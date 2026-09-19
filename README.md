@@ -16,7 +16,18 @@ popup is gone.
 - A signed-in `pass-cli` (`pass-cli login`). The flake package supplies `proton-pass-cli`, so
   you only need to install it yourself for a non-flake build, or to override the bundled one
   with a different version — a `pass-cli` on `PATH` takes precedence. 2.3 or newer.
-- A Secret Service provider (for example gnome-keyring) for the encrypted item cache.
+- A Secret Service provider (for example gnome-keyring), both for the encrypted item cache and
+  for `pass-cli`'s own database key: the app always runs `pass-cli` with
+  `PROTON_PASS_LINUX_KEYRING=dbus`. `pass-cli`'s default kernel keyring hands a key only to the
+  session that created it, which a background service never shares with your terminal. Set the
+  same variable in your shell, so both see one session:
+
+  ```nix
+  environment.sessionVariables.PROTON_PASS_LINUX_KEYRING = "dbus";
+  ```
+
+  Changing the value with a session already stored makes `pass-cli` log itself out for safety;
+  sign in again afterwards.
 - A non-sandboxed install: the clipboard helper needs the Wayland data-control protocol.
 
 ## Install

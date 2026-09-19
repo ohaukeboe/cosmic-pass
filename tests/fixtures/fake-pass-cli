@@ -3,7 +3,7 @@
 #   FAKE_FIXTURE_DIR  directory with fixture files (see below)
 #   FAKE_ARGV_LOG     append each invocation's argv (space-joined) to this file
 #   FAKE_TIMES_LOG    append "start <epoch-ns>" / "end <epoch-ns>" lines to this file
-#   FAKE_ECHO_ENV=1   print PASS_LOG_LEVEL and PROTON_PASS_NO_UPDATE_CHECK, then exit
+#   FAKE_ECHO_ENV=1   print the environment the runner sets, then exit
 #   FAKE_SLEEP        seconds to sleep before answering
 #   FAKE_EXIT         non-zero: print FAKE_STDERR (default "Error: fake failure") and exit with it
 #   FAKE_ITEMS=N      `item list` prints N generated login items
@@ -26,7 +26,7 @@ finish() {
 if [ "${FAKE_ECHO_ENV:-}" = 1 ]; then
     stdin_state=open
     if ! read -r _line; then stdin_state=eof; fi
-    echo "PASS_LOG_LEVEL=${PASS_LOG_LEVEL:-} PROTON_PASS_NO_UPDATE_CHECK=${PROTON_PASS_NO_UPDATE_CHECK:-} STDIN=$stdin_state"
+    echo "PASS_LOG_LEVEL=${PASS_LOG_LEVEL:-} PROTON_PASS_NO_UPDATE_CHECK=${PROTON_PASS_NO_UPDATE_CHECK:-} PROTON_PASS_LINUX_KEYRING=${PROTON_PASS_LINUX_KEYRING:-} STDIN=$stdin_state"
     finish 0
 fi
 

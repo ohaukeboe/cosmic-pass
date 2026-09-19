@@ -50,7 +50,7 @@ mod runner {
             .unwrap();
         assert_eq!(
             String::from_utf8_lossy(&out.stdout).trim(),
-            "PASS_LOG_LEVEL=off PROTON_PASS_NO_UPDATE_CHECK=1 STDIN=eof"
+            "PASS_LOG_LEVEL=off PROTON_PASS_NO_UPDATE_CHECK=1 PROTON_PASS_LINUX_KEYRING=dbus STDIN=eof"
         );
     }
 
