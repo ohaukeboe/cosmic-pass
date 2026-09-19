@@ -446,7 +446,7 @@ mod tests {
     }
 
     #[test]
-    fn chords_round_trip_through_ron_like_serde() {
+    fn chords_round_trip_through_serde_json() {
         let p = Preferences::default();
         let json = serde_json::to_string(&p.shortcuts).unwrap();
         assert!(json.contains("\"copy_primary\""));
@@ -455,6 +455,54 @@ mod tests {
         let back: Shortcuts = serde_json::from_str(&json).unwrap();
         assert_eq!(back, p.shortcuts);
     }
+    /// The format the chords are actually stored in. cosmic-config reads its files with
+    /// `ron::from_str` and writes an enum map key as a bare identifier, which the derived
+    /// `Deserialize` would reject outright on a name this version no longer has: it answers
+    /// `NoSuchEnumVariant { found: "open_detail" }`, the whole `shortcuts` value falls back
+    /// to `Preferences::default()`, and every chord the user set is gone (FR-110, SC-005).
+    /// The serde_json tests above cannot catch that — RON is a different parser, and its map
+    /// keys arrive as identifiers rather than strings.
+    #[test]
+    fn a_stored_ron_map_keeps_every_chord_but_the_removed_action() {
+        let stored = r#"{
+            open_detail: (modifiers: [Ctrl], key: "i"),
+            copy_username: (modifiers: [Ctrl], key: "y"),
+            refresh: (modifiers: [], key: "F7"),
+        }"#;
+        let shortcuts: Shortcuts =
+            ron::from_str(stored).expect("a name this version dropped must not fail the map");
+        assert_eq!(shortcuts.len(), 2, "only the unknown name is dropped");
+        let p = Preferences {
+            shortcuts,
+            ..Preferences::default()
+        }
+        .validated();
+        assert_eq!(
+            p.chord(Action::CopyUsername),
+            KeyChord::new(&[Modifier::Ctrl], "y"),
+            "a rebound chord survives the upgrade"
+        );
+        assert_eq!(p.chord(Action::Refresh), KeyChord::new(&[], "F7"));
+        assert_eq!(
+            p.action_for(&[Modifier::Ctrl], "i"),
+            None,
+            "and the chord the removed action held is free"
+        );
+    }
+
+    #[test]
+    fn chords_round_trip_through_ron() {
+        let p = Preferences::default();
+        let stored = ron::ser::to_string_pretty(&p.shortcuts, ron::ser::PrettyConfig::new())
+            .expect("the map serializes to RON");
+        assert!(
+            stored.contains("copy_primary: ("),
+            "RON writes an action key as a bare identifier: {stored}"
+        );
+        let back: Shortcuts = ron::from_str(&stored).expect("and reads its own output back");
+        assert_eq!(back, p.shortcuts);
+    }
+
     /// FR-109: the detail pane is gone, and so is the action that opened it.
     #[test]
     fn nothing_opens_a_detail_pane_any_more() {
