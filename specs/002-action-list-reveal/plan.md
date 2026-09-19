@@ -68,11 +68,12 @@ file rewritten (`tests/story3_detail_pane.rs`), three contract docs amended.
 | I. Code quality | `just fmt` + `just lint` (clippy `-D warnings`) clean; no dead code left behind by the removal; no suppressions added | PASS — the removal is subtractive; every `Mode::Detail` arm, the `detail.rs` module and the `Pane::Detail` variant go with it |
 | II. Test-first | Every behavior change starts with a failing test: reveal-follows-highlight, TOTP reveal, removed shortcut, tolerant preference load, dropped text fields | PASS — task order in `tasks.md` will put each test before its change |
 | III. Layered coverage | Reducer logic unit-tested in `src/core/state.rs`; parser change snapshot-tested; each user story has an acceptance test under `tests/` | PASS — `tests/story3_detail_pane.rs` is rewritten into `tests/story3_reveal_in_action_list.rs` for the new surface, not deleted |
-| IV. Simplicity | No new dependency, no new layer. One new field on `ActionEntry`, one tolerant deserializer, one deletion | PASS — see Complexity Tracking for the deserializer, which is the only addition |
+| IV. Simplicity | No new runtime dependency, no new layer. One new field on `ActionEntry`, one tolerant deserializer, one deletion | PASS — see Complexity Tracking for the deserializer and for the `ron` dev-dependency that convergence added to test it |
 | V. Contracts & docs | `contracts/keyboard.md` and `contracts/config.md` of feature 001 are amended, `cache-format.md` notes the version bump, `README.md` keys table stays accurate | PASS — doc tasks ship in the same change |
 
-Post-design re-check: **PASS**. Phase 1 added no dependency, no new module, and no new
-persisted state; `Mode` loses a variant and `ViewState` loses none.
+Post-design re-check: **PASS**. Phase 1 added no runtime dependency, no new module, and no
+new persisted state; `Mode` loses a variant and `ViewState` loses none. Convergence later
+added one dev-dependency, `ron`, recorded in Complexity Tracking below.
 
 ## Project Structure
 
@@ -125,4 +126,5 @@ module or boundary is introduced, and `src/core` stays IO-free.
 
 | Violation | Why Needed | Simpler Alternative Rejected Because |
 |-----------|------------|--------------------------------------|
+| `ron` as a dev-dependency (T057) | `Preferences::shortcuts` is stored as RON and read back by cosmic-config's `ron::from_str`, and RON hands map keys to the deserializer as identifiers rather than strings. A `serde_json` test therefore exercises a different parser than the one users' configs go through, and cannot catch a regression in FR-110 | Leaving the stored format untested was the status quo the first convergence pass flagged; hand-writing a RON parser in the test would be more code to maintain than the crate that already ships one, and `ron` is already in the dependency tree through cosmic-config |
 | Tolerant deserializer for `Preferences::shortcuts` (a `Shortcuts` newtype reading string keys and skipping unknown ones) | FR-110: an existing config binds `open_detail`; with the plain `BTreeMap<Action, KeyChord>` the whole `shortcuts` value fails to deserialize and every user-set chord silently reverts to default | Keeping a hidden `Action::OpenDetail` variant out of `Action::ALL` would also parse, but leaves a dead variant the constitution forbids and repeats the problem for every future action rename |

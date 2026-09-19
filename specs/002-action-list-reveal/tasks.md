@@ -240,3 +240,9 @@ Task: "value-line rendering tests in src/app/view/actions.rs"
 
 - [X] T056 CRITICAL: add an acceptance-level test `tests/story2_removed_info_screen.rs` driving US2's four acceptance scenarios end to end through `Harness` — the former info-screen chord opens nothing from the result list, the preferences pane lists no detail action, a `Preferences` carrying a stale action name loads with every other chord intact, and the field list still reaches the title, kind, vault, each field and the one-time code — per Constitution III and US1/US2 acceptance scenarios (partial)
 - [X] T057 Add `ron` as a dev-dependency and a test in `src/config.rs` that loads a RON shortcut map in the shape cosmic-config actually stores (bare identifier keys, e.g. `{open_detail: (modifiers: [Ctrl], key: "i"), refresh: (modifiers: [], key: "F7")}`), asserting the unknown name is dropped, the recognized chords survive, and the newtype's own output reloads — today every such test uses `serde_json` while cosmic-config reads with `ron::from_str` — per FR-110 and SC-005 (partial)
+
+---
+
+## Phase 8: Convergence
+
+- [X] T058 CRITICAL: record the `ron` dev-dependency in `specs/002-action-list-reveal/plan.md` — add a Complexity Tracking row (needed because `Preferences::shortcuts` is stored as RON and read by `ron::from_str`, so serde_json tests cannot exercise the format users actually have; the rejected alternative is leaving the format untested) and correct the two Constitution Check lines that still claim no dependency was added — per Constitution IV (contradicts)
