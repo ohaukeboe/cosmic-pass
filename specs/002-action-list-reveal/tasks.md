@@ -162,7 +162,7 @@ absent while `Hidden` and `Totp` ones remain; open such an item in the app and s
 - [X] T051 [P] Mark FR-018 superseded and FR-019 relocated in `specs/001-quick-access-launcher/spec.md`, with a one-line pointer to feature 002 (the same way FR-002 records its amendment)
 - [X] T052 [P] Add the reveal row (`Ctrl+R` — reveal the highlighted field) and the field-list row (`Tab`) to the Keys table in `README.md`
 - [X] T053 Run `just check` and confirm fmt, clippy `-D warnings`, nextest and the 80% coverage floor all pass on the changed files
-- [ ] T054 Walk the manual checklist in [quickstart.md](./quickstart.md) against a signed-in `pass-cli` via `just run`
+- [X] T054 Walk the manual checklist in [quickstart.md](./quickstart.md) against a signed-in `pass-cli` via `just run`
 - [X] T055 Close the bd issues (`bd close <us1> <us2> <us3> <epic>`) and file follow-ups for anything deferred, such as the single-`Revealed`-enum refactor noted in research R3
 
 ---
