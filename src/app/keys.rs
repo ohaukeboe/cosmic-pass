@@ -125,11 +125,10 @@ pub fn map_key(press: &KeyPress, mode: &Mode, prefs: &Preferences, ctx: KeyConte
         Action::CopyTotp => Some(Msg::CopyTotp),
         Action::CopyUrl => Some(Msg::CopyUrl),
         Action::OpenActions if matches!(mode, Mode::List) => Some(Msg::OpenActions),
-        Action::OpenDetail if matches!(mode, Mode::List) => Some(Msg::OpenDetail),
-        Action::Reveal if matches!(mode, Mode::Detail { .. }) => Some(Msg::ToggleReveal),
+        Action::Reveal if in_actions => Some(Msg::ToggleReveal),
         Action::SignIn => Some(Msg::StartLogin),
         Action::Retry => Some(Msg::Startup),
-        Action::OpenActions | Action::OpenDetail | Action::Reveal | Action::Preferences => None,
+        Action::OpenActions | Action::Reveal | Action::Preferences => None,
     }
 }
 
@@ -289,21 +288,24 @@ mod tests {
     }
 
     #[test]
-    fn detail_keys() {
-        assert!(is(map(&[Ctrl], "i"), |m| matches!(m, Msg::OpenDetail)));
-        let detail = Mode::Detail {
-            key: crate::model::ItemKey::new("s", "i"),
-        };
-        assert!(is(map_in(&detail, &[Ctrl], "r", false), |m| matches!(
-            m,
-            Msg::ToggleReveal
-        )));
-        assert!(map(&[Ctrl], "r").is_none());
-        assert!(is(map_in(&detail, &[], "Enter", false), |m| matches!(
-            m,
-            Msg::CopyPrimary
-        )));
-        assert!(map_in(&detail, &[Ctrl], "i", false).is_none());
+    fn reveal_is_a_field_list_chord() {
+        assert!(is(
+            map_in(&actions_mode(), &[Ctrl], "r", false),
+            |m| matches!(m, Msg::ToggleReveal)
+        ));
+        assert!(
+            map(&[Ctrl], "r").is_none(),
+            "there is no row to reveal in the result list"
+        );
+    }
+
+    /// The chord that opened the detail pane is bound to nothing now that the pane is gone
+    /// (FR-109); it must not fall through to some other action in any mode either.
+    #[test]
+    fn the_detail_chord_does_nothing_anywhere() {
+        for mode in [Mode::List, actions_mode(), prefs_mode()] {
+            assert!(map_in(&mode, &[Ctrl], "i", false).is_none(), "{mode:?}");
+        }
     }
 
     fn prefs_mode() -> Mode {

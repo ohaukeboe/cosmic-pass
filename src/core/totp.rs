@@ -5,7 +5,7 @@ use secrecy::SecretString;
 /// `pass-cli` does not report the period; standard TOTP uses 30 seconds.
 pub const DEFAULT_PERIOD: u32 = 30;
 
-/// A one-time code shown in the detail pane.
+/// A one-time code shown on a revealed row of the field list.
 #[derive(Debug, Clone)]
 pub struct TotpDisplay {
     pub field: String,

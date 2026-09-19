@@ -183,9 +183,12 @@ with an action to start sign-in is shown.
 **Details**
 
 - **FR-018**: Users MUST be able to open a detail pane showing the highlighted item's fields
-  with secret values masked by default and revealable on request.
+  with secret values masked by default and revealable on request (superseded 2026-09-19 by
+  feature 002 FR-112: the detail pane is removed and masking with reveal on request is a
+  property of the action list — see specs/002-action-list-reveal/spec.md).
 - **FR-019**: One-time codes MUST display a countdown and refresh automatically when they
-  expire.
+  expire (relocated 2026-09-19 to feature 002 FR-104: the countdown now appears on a revealed
+  one-time-code row of the action list — see specs/002-action-list-reveal/spec.md).
 
 **Session and status**
 

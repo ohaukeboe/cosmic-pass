@@ -16,7 +16,6 @@ pub enum Action {
     CopyTotp,
     CopyUrl,
     OpenActions,
-    OpenDetail,
     Reveal,
     Refresh,
     Preferences,
@@ -25,13 +24,12 @@ pub enum Action {
 }
 
 impl Action {
-    pub const ALL: [Action; 11] = [
+    pub const ALL: [Action; 10] = [
         Action::CopyPrimary,
         Action::CopyUsername,
         Action::CopyTotp,
         Action::CopyUrl,
         Action::OpenActions,
-        Action::OpenDetail,
         Action::Reveal,
         Action::Refresh,
         Action::Preferences,
@@ -46,7 +44,6 @@ impl Action {
             Action::CopyTotp => "Copy one-time code",
             Action::CopyUrl => "Copy website",
             Action::OpenActions => "Show all fields",
-            Action::OpenDetail => "Show details",
             Action::Reveal => "Reveal secrets",
             Action::Refresh => "Refresh",
             Action::Preferences => "Preferences",
@@ -62,7 +59,6 @@ impl Action {
             Action::CopyTotp => KeyChord::new(&[Modifier::Ctrl], "o"),
             Action::CopyUrl => KeyChord::new(&[Modifier::Ctrl], "l"),
             Action::OpenActions => KeyChord::new(&[], "Tab"),
-            Action::OpenDetail => KeyChord::new(&[Modifier::Ctrl], "i"),
             Action::Reveal => KeyChord::new(&[Modifier::Ctrl], "r"),
             Action::Refresh => KeyChord::new(&[], "F5"),
             Action::Preferences => KeyChord::new(&[Modifier::Ctrl], ","),
@@ -137,13 +133,103 @@ pub const REFRESH_STALE_RANGE: std::ops::RangeInclusive<u32> = 30..=86_400;
 /// the config file if you prefer a longer list.
 pub const MAX_RESULTS_RANGE: std::ops::RangeInclusive<u16> = 5..=200;
 
+/// The chord bound to each action.
+///
+/// Loaded by hand rather than by `#[derive(Deserialize)]` so that an action name this version
+/// does not know costs only its own entry. cosmic-config reads a stored config by building
+/// `Preferences::default()` and overwriting one field per stored key, so a `shortcuts` value
+/// that fails to parse leaves the whole field at its defaults: one stale name — `open_detail`,
+/// written by every version before this one — would revert every chord the user ever set
+/// (FR-110). Serialization is unchanged, so a config this version writes stays readable.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct Shortcuts(BTreeMap<Action, KeyChord>);
+
+impl std::ops::Deref for Shortcuts {
+    type Target = BTreeMap<Action, KeyChord>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for Shortcuts {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl FromIterator<(Action, KeyChord)> for Shortcuts {
+    fn from_iter<I: IntoIterator<Item = (Action, KeyChord)>>(iter: I) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl<'de> Deserialize<'de> for Shortcuts {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_map(ShortcutsVisitor)
+    }
+}
+
+struct ShortcutsVisitor;
+
+impl<'de> serde::de::Visitor<'de> for ShortcutsVisitor {
+    type Value = Shortcuts;
+
+    fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("a map of action names to key chords")
+    }
+
+    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Shortcuts, A::Error> {
+        let mut shortcuts = BTreeMap::new();
+        while let Some(MaybeAction(action)) = map.next_key()? {
+            // The value is read either way: skipping it would leave the parser mid-entry.
+            let chord = map.next_value()?;
+            if let Some(action) = action {
+                shortcuts.insert(action, chord);
+            }
+        }
+        Ok(Shortcuts(shortcuts))
+    }
+}
+
+/// One key of a stored shortcut map: the action it names, or `None` for a name this version
+/// has no action for.
+struct MaybeAction(Option<Action>);
+
+impl<'de> Deserialize<'de> for MaybeAction {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        // An identifier, because that is how RON writes an enum used as a map key and how
+        // JSON writes any key at all.
+        deserializer.deserialize_identifier(ActionNameVisitor)
+    }
+}
+
+struct ActionNameVisitor;
+
+impl serde::de::Visitor<'_> for ActionNameVisitor {
+    type Value = MaybeAction;
+
+    fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("an action name")
+    }
+
+    fn visit_str<E: serde::de::Error>(self, name: &str) -> Result<MaybeAction, E> {
+        // Resolved through `Action`'s own derived `Deserialize` so the names it accepts here
+        // cannot drift from the names it writes.
+        use serde::de::IntoDeserializer;
+        let name: serde::de::value::StrDeserializer<'_, E> = name.into_deserializer();
+        Ok(MaybeAction(Action::deserialize(name).ok()))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, CosmicConfigEntry)]
 #[version = 1]
 pub struct Preferences {
     pub clipboard_clear_secs: u32,
     pub refresh_stale_secs: u32,
     pub max_results: u16,
-    pub shortcuts: BTreeMap<Action, KeyChord>,
+    pub shortcuts: Shortcuts,
 }
 
 impl Default for Preferences {
@@ -179,7 +265,7 @@ impl Preferences {
             used.push(chord.normalized());
             shortcuts.insert(action, chord);
         }
-        self.shortcuts = shortcuts;
+        self.shortcuts = Shortcuts(shortcuts);
         self
     }
 
@@ -344,7 +430,7 @@ mod tests {
     #[test]
     fn older_stored_shortcuts_gain_the_new_actions() {
         let stored = r#"{"copy_primary":{"modifiers":[],"key":"Enter"},"refresh":{"modifiers":[],"key":"F7"}}"#;
-        let shortcuts: BTreeMap<Action, KeyChord> = serde_json::from_str(stored).unwrap();
+        let shortcuts: Shortcuts = serde_json::from_str(stored).unwrap();
         let p = Preferences {
             shortcuts,
             ..Preferences::default()
@@ -366,7 +452,81 @@ mod tests {
         assert!(json.contains("\"copy_primary\""));
         assert!(json.contains("\"sign_in\""));
         assert!(json.contains("\"retry\""));
-        let back: BTreeMap<Action, KeyChord> = serde_json::from_str(&json).unwrap();
+        let back: Shortcuts = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, p.shortcuts);
+    }
+    /// FR-109: the detail pane is gone, and so is the action that opened it.
+    #[test]
+    fn nothing_opens_a_detail_pane_any_more() {
+        assert_eq!(Action::ALL.len(), 10, "one action fewer than before");
+        let names: Vec<String> = Action::ALL
+            .iter()
+            .map(|a| serde_json::to_string(a).expect("an action serializes to its name"))
+            .collect();
+        assert!(
+            !names.iter().any(|n| n.contains("detail")),
+            "no action is named after the removed pane: {names:?}"
+        );
+        assert!(
+            !Action::ALL.iter().any(|a| a.label().contains("detail")),
+            "and none of them still offers to show details"
+        );
+        assert_eq!(
+            Preferences::default().action_for(&[Modifier::Ctrl], "i"),
+            None,
+            "Ctrl+I is left bound to nothing"
+        );
+    }
+
+    /// A chord map stored by an older version still names `open_detail`. Dropping that one
+    /// entry rather than failing the whole map is what keeps every other chord the user set
+    /// (FR-110): cosmic-config overwrites one field per config key, so a `shortcuts` value
+    /// that fails to parse takes all eleven bindings down with it.
+    #[test]
+    fn a_binding_for_a_removed_action_is_dropped_and_the_rest_survive() {
+        let stored = r#"{"open_detail":{"modifiers":["Ctrl"],"key":"i"},"copy_username":{"modifiers":["Ctrl"],"key":"y"}}"#;
+        let shortcuts: Shortcuts =
+            serde_json::from_str(stored).expect("an unknown action name must not fail the map");
+        assert_eq!(
+            shortcuts.get(&Action::CopyUsername),
+            Some(&KeyChord::new(&[Modifier::Ctrl], "y")),
+            "the recognized chord is kept"
+        );
+        assert_eq!(shortcuts.len(), 1, "and the unknown one is simply gone");
+    }
+
+    /// SC-005: no user-set chord may silently revert because a stale action name sat beside it.
+    #[test]
+    fn validating_a_map_with_a_removed_action_keeps_the_user_set_chords() {
+        let stored = r#"{"open_detail":{"modifiers":["Ctrl"],"key":"i"},"copy_username":{"modifiers":["Ctrl"],"key":"y"},"refresh":{"modifiers":[],"key":"F7"}}"#;
+        let shortcuts: Shortcuts = serde_json::from_str(stored).expect("the map still loads");
+        let p = Preferences {
+            shortcuts,
+            ..Preferences::default()
+        }
+        .validated();
+        assert_eq!(
+            p.chord(Action::CopyUsername),
+            KeyChord::new(&[Modifier::Ctrl], "y")
+        );
+        assert_eq!(p.chord(Action::Refresh), KeyChord::new(&[], "F7"));
+        assert_eq!(
+            p.shortcuts.len(),
+            Action::ALL.len(),
+            "the actions the map never mentioned are filled with their defaults"
+        );
+    }
+
+    /// The newtype only changes how unknown keys are treated: a config it writes is the same
+    /// map a config it reads is, so an older version can still read this one back.
+    #[test]
+    fn the_shortcut_map_is_written_in_the_shape_it_is_read() {
+        let p = Preferences::default();
+        let json = serde_json::to_string(&p.shortcuts).expect("the map serializes");
+        let plain: BTreeMap<Action, KeyChord> =
+            serde_json::from_str(&json).expect("a plain map reads it back");
+        assert_eq!(plain.len(), Action::ALL.len());
+        let back: Shortcuts = serde_json::from_str(&json).expect("and so does the newtype");
         assert_eq!(back, p.shortcuts);
     }
 }

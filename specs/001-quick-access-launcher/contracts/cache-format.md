@@ -27,13 +27,18 @@
 AAD = bytes 0..30. Plaintext = `postcard`-encoded `CacheFile` (see
 [data-model.md](../data-model.md#cachefile-encrypted-on-disk)).
 
+`CACHE_FORMAT_VERSION` is `2` as of feature 002: cached items written by version `1` could
+carry a user-defined text field that is no longer listed, so such a cache is discarded on load
+and rebuilt by the next refresh rather than drawn once with rows this version would not create.
+The envelope version in the header is unrelated and stays `1`.
+
 ## Rules
 
 | Situation | Behavior |
 |-----------|----------|
 | Keyring unavailable, locked, or `COSMIC_PASS_NO_KEYRING=1` | Do not read or write the file. Memory only (FR-024a). |
 | Magic/version mismatch, decrypt failure, decode failure | Delete file; continue with empty data and refresh. |
-| `format_version` newer than supported | Delete file; refresh. |
+| `format_version` ≠ `CACHE_FORMAT_VERSION` (older or newer) | Delete file; refresh. |
 | `account` ≠ current signed-in account | Delete file; refresh (FR-024b). |
 | `pass-cli` reports signed out | Delete file and keyring item (FR-024b). |
 | Successful refresh or usage update | Rewrite file (debounced to at most once per 2 s). |

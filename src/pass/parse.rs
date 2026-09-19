@@ -492,14 +492,20 @@ fn website_field(i: usize) -> (String, String) {
     }
 }
 
+/// Offers the custom fields whose value the app can produce on demand.
+///
+/// `pass-cli` reads a hidden field and a one-time code back by name, so those become a secret
+/// field and a code. It hands the app no value for a text field — nor for a content kind this
+/// version has no name for — so a row for one could only ever render the empty placeholder and
+/// could never be copied; both are dropped here (FR-113). The parser is the right place for
+/// that: every consumer reads from it, so a dropped field reaches neither the field list, nor
+/// a copy shortcut, nor the primary-field choice, nor the on-disk cache.
 fn custom_fields(s: &mut ItemSummary, raw: Vec<RawCustomField>) {
     for f in raw {
         match f.content {
             CustomFieldKind::Hidden => s.fields.push(FieldRef::secret(f.name.clone(), f.name)),
             CustomFieldKind::Totp => s.totp_fields.push(f.name),
-            CustomFieldKind::Text | CustomFieldKind::Other => {
-                s.fields.push(FieldRef::unstored(f.name.clone(), f.name));
-            }
+            CustomFieldKind::Text | CustomFieldKind::Other => {}
         }
     }
 }
@@ -830,7 +836,6 @@ mod tests {
                 "last_name",
                 "birthdate",
                 "gender",
-                "Nickname",
                 "street_address",
                 "zip_or_postal_code",
                 "city",
@@ -844,7 +849,8 @@ mod tests {
                 "work_email",
                 "Member id",
             ],
-            "empty members must not be offered and the groups must stay in UI order"
+            "empty members and user-defined text fields must not be offered, and the groups \
+             must stay in UI order"
         );
         assert_eq!(identity.subtitle.as_deref(), Some("Fixture Person"));
         assert_eq!(identity.email.as_deref(), Some("person@example.invalid"));
@@ -873,6 +879,67 @@ mod tests {
         assert_no_secrets(&items);
     }
 
+    /// One login whose `extra_fields` are the given custom-field JSON objects.
+    fn custom_field_item(extra: &str) -> ItemSummary {
+        let json = format!(
+            r#"{{"items":[{{"id":"custom","state":"Active","content":{{"title":"Custom",
+              "note":"","content":{{"Login":{{}}}},"extra_fields":[{extra}]}}}}]}}"#
+        );
+        parse_items(json.as_bytes(), &ShareId("share-a".into()), "Personal")
+            .unwrap()
+            .remove(0)
+    }
+
+    /// `pass-cli` hands the app no value for a user-defined text field, so a row for one
+    /// could only ever show a dash and could never be copied. Hidden and one-time-code
+    /// siblings carry values the app can fetch, so they stay (FR-113, FR-114).
+    #[test]
+    fn a_user_defined_text_field_is_dropped_and_its_siblings_are_not() {
+        let item = custom_field_item(
+            r#"{"name":"Nickname","content":{"Text":"fix"}},
+               {"name":"Door code","content":{"Hidden":"SECRET-FIXTURE-door"}},
+               {"name":"Authenticator","content":{"Totp":"otpauth://x"}}"#,
+        );
+        let names: Vec<_> = item.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names, ["Door code"]);
+        assert!(item.field("Door code").is_some_and(|f| f.secret));
+        assert_eq!(item.totp_fields, ["Authenticator"]);
+    }
+
+    /// A content variant this version has no name for is as unshowable as a text field, so
+    /// it goes the same way rather than becoming a row that can only ever render a dash.
+    #[test]
+    fn an_unrecognised_custom_field_is_dropped_too() {
+        let item = custom_field_item(r#"{"name":"Mystery","content":{"Timestamp":"2026-01-01"}}"#);
+        assert!(
+            item.fields.is_empty(),
+            "unexpected fields: {:?}",
+            item.fields
+        );
+    }
+
+    /// Built-in members are cached by name only, like a custom text field, but unlike one the
+    /// app can fetch their value on demand — so they stay listed and copyable (FR-115).
+    #[test]
+    fn built_in_fetch_on_demand_members_are_still_offered() {
+        let items = parse_items(identity_item(), &ShareId("share-a".into()), "Personal").unwrap();
+        let identity = find(&items, "identity-full");
+        for name in [
+            "phone_number",
+            "first_name",
+            "birthdate",
+            "city",
+            "job_title",
+        ] {
+            assert!(
+                identity
+                    .field(name)
+                    .is_some_and(|f| !f.secret && f.value.is_none()),
+                "{name} must still be offered as an unstored field"
+            );
+        }
+    }
+
     #[test]
     fn items_contain_no_secret_values() {
         assert_no_secrets(&synthetic_items());
@@ -897,8 +964,8 @@ mod tests {
                 .is_some_and(|f| f.secret && f.value.is_none())
         );
         assert!(
-            gh.field("Account id")
-                .is_some_and(|f| !f.secret && f.value.is_none())
+            gh.field("Account id").is_none(),
+            "a user-defined text field is one `pass-cli` gives no value for, so it is dropped"
         );
         assert_eq!(gh.modified_at, 1_770_091_506);
     }
@@ -941,7 +1008,7 @@ mod tests {
         let mail = find(&items, "login-mail");
         assert_eq!(mail.username, None);
         assert_eq!(mail.subtitle.as_deref(), Some("me@example.invalid"));
-        assert!(!mail.has_totp());
+        assert!(mail.totp_fields.is_empty());
         assert!(
             mail.field("note").is_none(),
             "empty note must not be offered"
@@ -976,7 +1043,10 @@ mod tests {
         let ssh = find(&items, "ssh-server");
         assert!(ssh.field("private_key").is_some_and(|f| f.secret));
         assert!(ssh.field("Passphrase").is_some_and(|f| f.secret));
-        assert!(ssh.field("Hostname").is_some_and(|f| !f.secret));
+        assert!(
+            ssh.field("Hostname").is_none(),
+            "a section's text field goes the same way"
+        );
 
         let custom = find(&items, "custom-api");
         assert_eq!(custom.kind, ItemKind::Custom);

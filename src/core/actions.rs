@@ -27,6 +27,10 @@ pub struct ActionEntry {
     pub source: CopySource,
     pub label: String,
     pub shortcut: Option<Action>,
+    /// Where this row's field sits in the item's fields, or `None` for a one-time code, which
+    /// is not one of them. A reveal pins the position rather than the name, because names
+    /// repeat and positions do not.
+    pub field_index: Option<usize>,
 }
 
 /// Every copyable field of an item, primary first (FR-013).
@@ -38,7 +42,13 @@ pub fn all_actions(item: &ItemSummary) -> Vec<ActionEntry> {
     let url = url_index(item);
     let mut entries = Vec::new();
     if let Some(source) = &primary {
-        entries.push(entry(source.clone(), Some(Action::CopyPrimary)));
+        // The primary row shows a field the item already carries, so it answers for that
+        // field's position rather than for one of its own.
+        let at = match source {
+            CopySource::Field(field) => item.fields.iter().position(|f| f == field),
+            CopySource::Totp { .. } => None,
+        };
+        entries.push(entry(source.clone(), Some(Action::CopyPrimary), at));
     }
     for (i, field) in item.fields.iter().enumerate() {
         let source = CopySource::Field(field.clone());
@@ -52,7 +62,7 @@ pub fn all_actions(item: &ItemSummary) -> Vec<ActionEntry> {
         } else {
             None
         };
-        entries.push(entry(source, shortcut));
+        entries.push(entry(source, shortcut, Some(i)));
     }
     for (i, field) in item.totp_fields.iter().enumerate() {
         let source = CopySource::Totp {
@@ -62,12 +72,12 @@ pub fn all_actions(item: &ItemSummary) -> Vec<ActionEntry> {
             continue;
         }
         let shortcut = (i == 0).then_some(Action::CopyTotp);
-        entries.push(entry(source, shortcut));
+        entries.push(entry(source, shortcut, None));
     }
     entries
 }
 
-fn entry(source: CopySource, shortcut: Option<Action>) -> ActionEntry {
+fn entry(source: CopySource, shortcut: Option<Action>, field_index: Option<usize>) -> ActionEntry {
     let label = match &source {
         CopySource::Field(f) => f.label.clone(),
         CopySource::Totp { field } if field == "totp_uri" => "One-time code".to_owned(),
@@ -77,6 +87,7 @@ fn entry(source: CopySource, shortcut: Option<Action>) -> ActionEntry {
         source,
         label,
         shortcut,
+        field_index,
     }
 }
 
@@ -266,6 +277,49 @@ mod tests {
             .collect()
     }
 
+    fn source_name(s: &CopySource) -> String {
+        match s {
+            CopySource::Field(f) => f.name.clone(),
+            CopySource::Totp { field } => format!("totp:{field}"),
+        }
+    }
+
+    /// The dedicated accessors bind by name and kind, never by position, so dropping the
+    /// user-defined text fields the parser used to emit lands every shortcut on the field it
+    /// landed on before (FR-116).
+    #[test]
+    fn dropping_user_defined_text_fields_moves_no_shortcut() {
+        fn picks(i: &ItemSummary) -> Vec<Option<String>> {
+            [
+                primary_action(i),
+                username_action(i),
+                url_action(i),
+                totp_action(i),
+            ]
+            .iter()
+            .map(|s| s.as_ref().map(source_name))
+            .collect()
+        }
+        let kept = login_full();
+        let mut with_text = login_full();
+        // What the parser emitted before: an unstored row per custom text field, on either
+        // side of the fields the shortcuts aim at.
+        with_text
+            .fields
+            .insert(0, FieldRef::unstored("Nickname", "Nickname"));
+        with_text.fields.push(FieldRef::unstored("Hint", "Hint"));
+        assert_eq!(picks(&with_text), picks(&kept));
+        assert_eq!(
+            picks(&kept),
+            [
+                Some("password".to_owned()),
+                Some("username".to_owned()),
+                Some("url".to_owned()),
+                Some("totp:totp_uri".to_owned()),
+            ]
+        );
+    }
+
     #[test]
     fn login_action_list() {
         let entries = all_actions(&login_full());
@@ -308,6 +362,38 @@ mod tests {
         );
         assert!(
             matches!(url_action(&i), Some(CopySource::Field(f)) if f.value.as_deref() == Some("https://x"))
+        );
+    }
+
+    #[test]
+    fn every_row_carries_the_position_of_the_field_behind_it() {
+        let mut i = login_full();
+        // A custom field may repeat a built-in name, so the position — not the name — is what
+        // a reveal has to pin to reach the right field.
+        i.fields.push(FieldRef::unstored("username", "username"));
+        let entries = all_actions(&i);
+        assert_eq!(
+            entries
+                .iter()
+                .map(|e| (e.label.as_str(), e.field_index))
+                .collect::<Vec<_>>(),
+            vec![
+                ("Password", Some(2)),
+                ("Username", Some(0)),
+                ("Email", Some(1)),
+                ("Website", Some(3)),
+                ("Recovery", Some(4)),
+                ("Note", Some(5)),
+                ("username", Some(6)),
+                ("One-time code", None),
+                ("Backup", None),
+            ]
+        );
+        // The primary row repeats a field of the item rather than introducing one, so it names
+        // that field's own position.
+        assert_eq!(
+            entries[0].field_index.map(|at| i.fields[at].name.as_str()),
+            Some("password")
         );
     }
 

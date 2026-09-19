@@ -112,6 +112,8 @@ toggles the popup; if the background service is not running, the first run start
 | type | Search titles, usernames, websites, and vault names |
 | `Enter` | Copy the password (card number, note, ...) and close |
 | `↑` / `↓`, `Ctrl+P` / `Ctrl+N` | Move the selection |
+| `Tab` | Show every field of the selected item |
+| `Ctrl+R` | In the field list: reveal the highlighted field; press again to hide |
 | `Esc` | Cancel, go back, or close |
 | `F5` | Refresh items |
 

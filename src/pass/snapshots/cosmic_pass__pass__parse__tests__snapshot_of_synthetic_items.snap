@@ -60,12 +60,6 @@ expression: synthetic_items()
         "value": null
       },
       {
-        "name": "Account id",
-        "label": "Account id",
-        "secret": false,
-        "value": null
-      },
-      {
         "name": "note",
         "label": "Note",
         "secret": true,
@@ -288,12 +282,6 @@ expression: synthetic_items()
         "label": "Passphrase",
         "secret": true,
         "value": null
-      },
-      {
-        "name": "Hostname",
-        "label": "Hostname",
-        "secret": false,
-        "value": null
       }
     ],
     "modified_at": 1768089600
@@ -312,12 +300,6 @@ expression: synthetic_items()
     "urls": [],
     "totp_fields": [],
     "fields": [
-      {
-        "name": "Endpoint",
-        "label": "Endpoint",
-        "secret": false,
-        "value": null
-      },
       {
         "name": "Token",
         "label": "Token",

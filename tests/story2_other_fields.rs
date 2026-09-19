@@ -3,7 +3,8 @@
 use std::time::Duration;
 
 use cosmic_pass::core::state::{Mode, Msg};
-use cosmic_pass::model::{FieldRef, ItemKey, ItemKind, ItemSummary};
+use cosmic_pass::model::{FieldRef, ItemKey, ItemKind, ItemSummary, ShareId};
+use cosmic_pass::pass::parse::parse_items;
 use cosmic_pass::testing::{FakeBackend, Harness, summary};
 
 fn key(id: &str) -> ItemKey {
@@ -47,8 +48,22 @@ fn card() -> ItemSummary {
     i
 }
 
+/// A login as `pass-cli` prints it, carrying a user-defined text field. Parsed rather than
+/// hand-built, because the parser is the one place such a field is dropped.
+fn with_custom_text() -> ItemSummary {
+    let json = br#"{"items":[{"id":"nick","state":"Active","content":{"title":"Nickname Co",
+      "note":"","content":{"Login":{"username":"ada","password":"SECRET-FIXTURE-nick",
+      "urls":["https://nick.example"],"totp_uri":"otpauth://totp/nick"}},
+      "extra_fields":[{"name":"Nickname","content":{"Text":"fix"}}]}}]}"#;
+    parse_items(json, &ShareId("s".into()), "Personal")
+        .expect("the fixture parses")
+        .remove(0)
+}
+
 async fn opened(query: &str) -> Harness {
-    let backend = FakeBackend::with_items(vec![with_totp(), email_only(), card()]);
+    let backend =
+        FakeBackend::with_items(vec![with_totp(), email_only(), card(), with_custom_text()]);
+    backend.set_totp(&key("nick"), &[("totp_uri", "654321")]);
     backend.set_totp(
         &key("gh"),
         &[
@@ -239,4 +254,40 @@ async fn open_actions_without_selection_does_nothing() {
     let mut h = opened("zzzz").await;
     h.send(Msg::OpenActions).await;
     assert_eq!(h.model.view.mode, Mode::List);
+}
+
+#[tokio::test]
+async fn a_user_defined_text_field_is_neither_listed_nor_copyable() {
+    let mut h = opened("nickname").await;
+    h.send(Msg::OpenActions).await;
+    let labels: Vec<_> = h.model.actions().into_iter().map(|a| a.label).collect();
+    assert_eq!(
+        labels,
+        ["Password", "Username", "Website", "One-time code"],
+        "the text field has no value to show and no way to be copied, so it has no row"
+    );
+    // Nothing behind the list can reach it either: it never entered the item.
+    let item = h
+        .model
+        .data
+        .items
+        .iter()
+        .find(|i| i.key == key("nick"))
+        .expect("the item is listed");
+    assert!(item.field("Nickname").is_none());
+}
+
+#[tokio::test]
+async fn dropping_a_text_field_leaves_the_dedicated_shortcuts_where_they_were() {
+    let mut h = opened("nickname").await;
+    h.send(Msg::CopyUsername).await;
+    assert_eq!(last_copy(&h), Some(("ada".into(), false)));
+
+    let mut h = opened("nickname").await;
+    h.send(Msg::CopyUrl).await;
+    assert_eq!(last_copy(&h), Some(("https://nick.example".into(), false)));
+
+    let mut h = opened("nickname").await;
+    h.send(Msg::CopyTotp).await;
+    assert_eq!(last_copy(&h), Some(("654321".into(), true)));
 }

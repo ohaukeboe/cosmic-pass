@@ -154,17 +154,15 @@ impl ItemSummary {
         }
     }
 
-    pub fn has_totp(&self) -> bool {
-        !self.totp_fields.is_empty()
-    }
-
     pub fn field(&self, name: &str) -> Option<&FieldRef> {
         self.fields.iter().find(|f| f.name == name)
     }
 }
 
-/// Version of the [`CacheFile`] payload.
-pub const CACHE_FORMAT_VERSION: u16 = 1;
+/// Version of the [`CacheFile`] payload. Bumped whenever the shape or the content of a
+/// cached item changes, so a stale cache is discarded on load rather than drawn once before
+/// the background refresh replaces it.
+pub const CACHE_FORMAT_VERSION: u16 = 2;
 
 /// Plaintext of the encrypted metadata cache. Holds no secret values.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -270,12 +268,9 @@ mod tests {
     }
 
     #[test]
-    fn has_totp_and_field_lookup() {
+    fn field_lookup_matches_by_name() {
         let mut s = summary("x");
-        assert!(!s.has_totp());
-        s.totp_fields.push("totp_uri".into());
         s.fields.push(FieldRef::secret("password", "Password"));
-        assert!(s.has_totp());
         assert!(s.field("password").is_some());
         assert!(s.field("pin").is_none());
     }
