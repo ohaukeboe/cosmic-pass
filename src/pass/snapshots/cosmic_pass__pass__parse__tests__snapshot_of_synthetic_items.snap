@@ -278,7 +278,7 @@ expression: synthetic_items()
         "value": "ssh-ed25519 AAAAfixture"
       },
       {
-        "name": "Passphrase",
+        "name": "Host.Passphrase",
         "label": "Passphrase",
         "secret": true,
         "value": null

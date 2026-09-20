@@ -140,6 +140,8 @@ struct RawCustomField {
 #[derive(Deserialize)]
 struct RawSection {
     #[serde(default)]
+    section_name: Option<String>,
+    #[serde(default)]
     section_fields: Vec<RawCustomField>,
 }
 
@@ -462,20 +464,30 @@ impl RawItem {
 /// Drops every field and one-time code whose `pass-cli` selector another entry of the same
 /// item repeats, keeping the one `pass-cli` actually resolves.
 ///
-/// [`FieldRef::name`] is the selector, not just a label. `item view --field=` resolves a
-/// repeated name to the LAST field carrying it (verified against `pass-cli` with a login
-/// holding a password beside a custom Hidden field of the same name), and `item totp`
-/// returns a map keyed by name, so an earlier namesake cannot be addressed at all. Offering
-/// one anyway rendered the last field's value under the earlier field's label, which could
-/// put a login password on screen or on the clipboard under an unrelated name
-/// (cosmic-pass-wqx.41). The survivor keeps its own position and label; the shadowed entry
-/// is unreachable either way, because `pass-cli` exposes no section-qualified or positional
-/// selector to address it with.
+/// [`FieldRef::name`] is the selector, not just a label. A repeated selector means an
+/// earlier namesake cannot be addressed at all, and offering one anyway rendered the
+/// survivor's value under the earlier field's label, which could put a login password on
+/// screen or on the clipboard under an unrelated name (cosmic-pass-wqx.41).
+///
+/// Which one survives follows the only shape with live evidence: a login holding a password
+/// beside a custom Hidden field of the same name resolves `item view --field=` to the
+/// `extra_fields` entry, which the parser pushes last, so the LAST entry is kept. A repeated
+/// name inside one `section` behaves the other way round - `pass-cli` takes the first - but
+/// that case no longer reaches here, because [`custom_fields_in`] gives section fields a
+/// `Section.Field` selector and two sections therefore no longer collide
+/// (cosmic-pass-wqx.50). What still reaches here is a namesake pair drawn from the kind
+/// body, `extra_fields`, the trailing note, or a section whose name could not qualify it.
+///
+/// Two gaps remain, neither reproducible through `pass-cli`, which updates an existing
+/// section field rather than creating a colliding extra: a section field shadowed by an
+/// `extra_fields` entry or by a built-in of the same name. So is case: `pass-cli` matches a
+/// name case-insensitively, while this compares bytes, so `PIN` and `pin` both survive and
+/// both resolve to whichever one `pass-cli` finds.
 ///
 /// This runs once per item, after every source has pushed into the summary - the kind body,
 /// `extra_fields`, each section, and the trailing note - because a collision can span any
 /// two of them. Fields and one-time codes are separate namespaces: they are read back by
-/// different commands.
+/// different commands, and only fields carry a qualifier.
 fn dedupe_selectors(s: &mut ItemSummary) {
     fn keep_last<T>(items: &mut Vec<T>, name: impl Fn(&T) -> &str) {
         let mut seen: HashSet<String> = HashSet::new();
@@ -530,18 +542,46 @@ fn website_field(i: usize) -> (String, String) {
 /// that: every consumer reads from it, so a dropped field reaches neither the field list, nor
 /// a copy shortcut, nor the primary-field choice, nor the on-disk cache.
 fn custom_fields(s: &mut ItemSummary, raw: Vec<RawCustomField>) {
+    custom_fields_in(s, None, raw);
+}
+
+/// As [`custom_fields`], for fields that live inside a named section.
+///
+/// The selector becomes `Section.Field` where the name allows it, so that two sections of
+/// one item may each hold a field of the same name and both stay addressable. See
+/// [`qualified`] for when the qualifier is dropped.
+fn custom_fields_in(s: &mut ItemSummary, section: Option<&str>, raw: Vec<RawCustomField>) {
     for f in raw {
+        let selector = qualified(section, &f.name);
         match f.content {
-            CustomFieldKind::Hidden => s.fields.push(FieldRef::secret(f.name.clone(), f.name)),
+            CustomFieldKind::Hidden => s.fields.push(FieldRef::secret(selector, f.name)),
+            // `item totp` answers with a map keyed by the bare field name, so a one-time
+            // code is not addressed through `--field=` and takes no qualifier.
             CustomFieldKind::Totp => s.totp_fields.push(f.name),
             CustomFieldKind::Text | CustomFieldKind::Other => {}
         }
     }
 }
 
+/// The `pass-cli` selector for `name`, qualified with its section where that is unambiguous.
+///
+/// `item view --field=Section.Field` resolves to that section's field and errors when the
+/// section does not match (verified against `pass-cli` 2.3.3 on 2026-09-20,
+/// cosmic-pass-wqx.50). The form splits on a dot, so a dot on either side of the qualifier
+/// would make the result parse as some other section-and-field pair; such a field keeps its
+/// bare name, which reaches it as long as no namesake shadows it.
+fn qualified(section: Option<&str>, name: &str) -> String {
+    match section {
+        Some(s) if !s.is_empty() && !s.contains('.') && !name.contains('.') => {
+            format!("{s}.{name}")
+        }
+        _ => name.to_owned(),
+    }
+}
+
 fn section_fields(s: &mut ItemSummary, sections: Vec<RawSection>) {
     for section in sections {
-        custom_fields(s, section.section_fields);
+        custom_fields_in(s, section.section_name.as_deref(), section.section_fields);
     }
 }
 
@@ -876,7 +916,9 @@ mod tests {
                 "company",
                 "job_title",
                 "work_email",
-                "Member id",
+                // `extra_sections` reaches the parser through the same path as any other
+                // section, so its fields carry the section qualifier too.
+                "Membership.Member id",
             ],
             "empty members and user-defined text fields must not be offered, and the groups \
              must stay in UI order"
@@ -902,7 +944,11 @@ mod tests {
                 .field("first_name")
                 .is_some_and(|f| !f.secret && f.value.is_none())
         );
-        for name in ["social_security_number", "Door code", "Member id"] {
+        for name in [
+            "social_security_number",
+            "Door code",
+            "Membership.Member id",
+        ] {
             assert!(identity.field(name).is_some_and(|f| f.secret), "{name}");
         }
         assert_no_secrets(&items);
@@ -980,23 +1026,91 @@ mod tests {
         assert_eq!(names, ["password", "Keep", "PIN"]);
     }
 
-    /// A name repeated across two different sections collides exactly like one repeated
-    /// inside a single field list, so the rule has to span every source that pushes into
-    /// `ItemSummary::fields`, not one `custom_fields` call.
+    /// Two sections of one item may each hold a field of the same name, and `pass-cli`
+    /// reaches each through `--field=Section.Field`, so both survive with a qualified
+    /// selector and their bare name as the label.
     #[test]
-    fn a_name_repeated_across_sections_collapses_too() {
-        let json = r#"{"items":[{"id":"sections","state":"Active","content":{"title":"Sections",
+    fn a_name_repeated_across_sections_is_qualified_not_collapsed() {
+        let item = two_sections("One", "Two");
+        let names: Vec<_> = item.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names, ["One.PIN", "Two.PIN"]);
+        let labels: Vec<_> = item.fields.iter().map(|f| f.label.as_str()).collect();
+        assert_eq!(labels, ["PIN", "PIN"]);
+    }
+
+    /// The qualifier splits on a dot, so a section name carrying one would address some
+    /// other section-and-field pair. Such a field keeps its bare name, and the pair then
+    /// collapses as any other repeated selector does.
+    #[test]
+    fn a_dotted_section_name_leaves_the_field_bare() {
+        let item = two_sections("One.Two", "Three.Four");
+        let names: Vec<_> = item.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names, ["PIN"]);
+    }
+
+    /// A section field with no namesake is qualified all the same: the qualified selector
+    /// resolves whether or not anything shadows the bare name.
+    #[test]
+    fn a_lone_section_field_is_qualified_too() {
+        let json = r#"{"items":[{"id":"ssh","state":"Active","content":{"title":"Key",
+          "note":"","content":{"SshKey":{"sections":[
+            {"section_name":"OpenSSH","section_fields":[
+              {"name":"Passphrase","content":{"Hidden":"SECRET-FIXTURE-pass"}}]}]}},
+          "extra_fields":[]}}]}"#;
+        let item = parse_items(json.as_bytes(), &ShareId("share-a".into()), "Personal")
+            .unwrap()
+            .remove(0);
+        let names: Vec<_> = item.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names, ["OpenSSH.Passphrase"]);
+    }
+
+    /// An unnamed section cannot qualify anything, so its fields keep the bare name that
+    /// `pass-cli` resolves for them.
+    #[test]
+    fn a_section_without_a_name_leaves_the_field_bare() {
+        let json = r#"{"items":[{"id":"anon","state":"Active","content":{"title":"Anon",
           "note":"","content":{"Custom":{"sections":[
-            {"section_name":"One","section_fields":[
-              {"name":"PIN","content":{"Hidden":"SECRET-FIXTURE-one"}}]},
-            {"section_name":"Two","section_fields":[
-              {"name":"PIN","content":{"Hidden":"SECRET-FIXTURE-two"}}]}]}},
+            {"section_fields":[
+              {"name":"PIN","content":{"Hidden":"SECRET-FIXTURE-anon"}}]}]}},
           "extra_fields":[]}}]}"#;
         let item = parse_items(json.as_bytes(), &ShareId("share-a".into()), "Personal")
             .unwrap()
             .remove(0);
         let names: Vec<_> = item.fields.iter().map(|f| f.name.as_str()).collect();
         assert_eq!(names, ["PIN"]);
+    }
+
+    /// `item totp` answers with a map keyed by the bare field name, so a one-time code in a
+    /// section takes no qualifier and still collapses when repeated.
+    #[test]
+    fn a_one_time_code_in_a_section_keeps_its_bare_name() {
+        let json = r#"{"items":[{"id":"codes","state":"Active","content":{"title":"Codes",
+          "note":"","content":{"Custom":{"sections":[
+            {"section_name":"One","section_fields":[
+              {"name":"Authenticator","content":{"Totp":"otpauth://first"}}]},
+            {"section_name":"Two","section_fields":[
+              {"name":"Authenticator","content":{"Totp":"otpauth://second"}}]}]}},
+          "extra_fields":[]}}]}"#;
+        let item = parse_items(json.as_bytes(), &ShareId("share-a".into()), "Personal")
+            .unwrap()
+            .remove(0);
+        assert_eq!(item.totp_fields, ["Authenticator"]);
+    }
+
+    /// A Custom item whose two sections each hold a Hidden field named `PIN`.
+    fn two_sections(first: &str, second: &str) -> ItemSummary {
+        let json = format!(
+            r#"{{"items":[{{"id":"sections","state":"Active","content":{{"title":"Sections",
+          "note":"","content":{{"Custom":{{"sections":[
+            {{"section_name":"{first}","section_fields":[
+              {{"name":"PIN","content":{{"Hidden":"SECRET-FIXTURE-one"}}}}]}},
+            {{"section_name":"{second}","section_fields":[
+              {{"name":"PIN","content":{{"Hidden":"SECRET-FIXTURE-two"}}}}]}}]}}}},
+          "extra_fields":[]}}}}]}}"#
+        );
+        parse_items(json.as_bytes(), &ShareId("share-a".into()), "Personal")
+            .unwrap()
+            .remove(0)
     }
 
     /// `item totp` returns a map keyed by field name, so a repeated one-time-code name is
@@ -1158,7 +1272,7 @@ mod tests {
 
         let ssh = find(&items, "ssh-server");
         assert!(ssh.field("private_key").is_some_and(|f| f.secret));
-        assert!(ssh.field("Passphrase").is_some_and(|f| f.secret));
+        assert!(ssh.field("Host.Passphrase").is_some_and(|f| f.secret));
         assert!(
             ssh.field("Hostname").is_none(),
             "a section's text field goes the same way"
