@@ -48,7 +48,7 @@ fn revealed(h: &Harness) -> Option<String> {
     h.model
         .view
         .revealed
-        .as_ref()
+        .value()
         .map(|s| s.expose_secret().to_owned())
 }
 
@@ -72,8 +72,8 @@ async fn opening_the_field_list_fetches_nothing() {
         assert!(matches!(h.model.view.mode, Mode::Actions { .. }), "{query}");
         assert_eq!(h.backend.totp_calls(), 0, "{query}");
         assert_eq!(h.backend.field_calls(), 0, "{query}");
-        assert!(h.model.view.totp.is_none(), "{query}");
-        assert!(h.model.view.revealed.is_none(), "{query}");
+        assert!(h.model.view.revealed.totp_code().is_none(), "{query}");
+        assert!(h.model.view.revealed.value().is_none(), "{query}");
     }
 }
 
@@ -100,9 +100,7 @@ async fn only_one_row_is_revealed_at_a_time() {
     h.send(Msg::ToggleReveal).await;
     assert_eq!(
         h.model
-            .view
-            .totp
-            .as_ref()
+            .revealed_totp()
             .map(|t| t.code.expose_secret().to_owned()),
         Some("123456".to_owned())
     );
@@ -116,7 +114,12 @@ async fn a_one_time_code_is_fetched_only_when_its_row_is_revealed() {
     assert_eq!(h.backend.totp_calls(), 0);
     h.send(Msg::ToggleReveal).await;
     assert_eq!(h.backend.totp_calls(), 1);
-    let totp = h.model.view.totp.as_ref().expect("a code is on screen");
+    let totp = h
+        .model
+        .view
+        .revealed
+        .totp_code()
+        .expect("a code is on screen");
     assert_eq!(totp.code.expose_secret(), "123456");
     assert!(totp.valid_until > h.now());
 }
@@ -126,7 +129,13 @@ async fn a_revealed_code_refreshes_when_its_period_ends() {
     let mut h = field_list("github").await;
     highlight_code(&mut h).await;
     h.send(Msg::ToggleReveal).await;
-    let until = h.model.view.totp.as_ref().expect("a code").valid_until;
+    let until = h
+        .model
+        .view
+        .revealed
+        .totp_code()
+        .expect("a code")
+        .valid_until;
     h.send(Msg::Tick(until - 1)).await;
     assert_eq!(h.backend.totp_calls(), 1);
     h.backend.set_totp(&key("gh"), &[("totp_uri", "654321")]);
@@ -136,8 +145,8 @@ async fn a_revealed_code_refreshes_when_its_period_ends() {
     assert_eq!(
         h.model
             .view
-            .totp
-            .as_ref()
+            .revealed
+            .totp_code()
             .expect("a code")
             .code
             .expose_secret(),
@@ -160,7 +169,7 @@ async fn leaving_drops_secrets() {
         h.send(leave.clone()).await;
         assert_eq!(h.model.view.mode, Mode::List, "{leave:?}");
         assert!(revealed(&h).is_none(), "{leave:?}");
-        assert!(h.model.view.totp.is_none(), "{leave:?}");
+        assert!(h.model.view.revealed.totp_code().is_none(), "{leave:?}");
     }
 }
 

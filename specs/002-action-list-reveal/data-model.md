@@ -40,15 +40,25 @@ never persisted and never outlives a redraw; the reveal pins its own copy of the
 
 | Field | Change | Notes |
 |-------|--------|-------|
-| `revealed: Option<SecretString>` | unchanged | Plaintext of the revealed field. Cleared on mask, highlight move, leaving the list, window close. |
-| `revealed_field: Option<RevealTarget>` | unchanged | Pins item, position, field and `modified_at`; a value arriving for a stale target is dropped (FR-106). |
+| `revealed: Revealed` | **replaces** `revealed`, `revealed_field`, `totp` and `totp_fetching` | One slot for whatever the field list shows unmasked. See the enum below. |
 | `reveal_cancel: Option<CancellationToken>` | unchanged | Own token so re-masking a field cannot cancel a code fetch. |
-| `totp: Option<TotpDisplay>` | unchanged shape | Now set only while a one-time-code row is revealed, not on opening a screen. |
-| `totp_fetching: bool` | unchanged | |
 | `detail_cancel: Option<CancellationToken>` | **renamed** to `reveal_totp_cancel` | Same role; the name follows the surviving surface. |
 
-**Invariant (FR-102)**: at most one of `revealed` / `totp` is `Some` at any time. Both are
-cleared before either is re-armed.
+### `core::state::Revealed` (added 2026-09-20, bd `cosmic-pass-39x`)
+
+| Variant | Carries | Notes |
+|---------|---------|-------|
+| `Nothing` | — | Every row is masked. The default. |
+| `Field { target, value }` | `RevealTarget`, `Option<SecretString>` | `target` pins item, position, field and `modified_at`; a value arriving for a stale target is dropped (FR-106). `value` is `None` until the fetch lands, which is what the row's in-flight marker reads. |
+| `Totp { code, fetching }` | `Option<TotpDisplay>`, `bool` | `code` is kept while `fetching` is set, so an expiring code stays on screen until its replacement arrives. |
+
+Read through `Revealed::value()`, `field_target()`, `totp_code()` and `totp_fetching()`, or
+through `Model::revealed_value(index)`, `revealed_totp()`, `revealing_field(index)` and
+`revealing_totp()`.
+
+**Invariant (FR-102)**: at most one value is revealed at a time. This is now a property of the
+type — a field reveal and a code cannot both be stored — rather than a rule `clear_revealed()`
+has to hold across two stores.
 
 ## `config::Action` (changed)
 

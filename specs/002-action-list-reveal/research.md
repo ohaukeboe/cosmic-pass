@@ -68,6 +68,14 @@ the invariant in the type. Rejected for now under YAGNI: it rewrites the TOTP re
 behavior the spec asks for, and the invariant is one line either way. Noted as a follow-up if a
 third revealable kind ever appears.
 
+**Amended 2026-09-20** (bd `cosmic-pass-39x`): the follow-up was taken ahead of a third kind.
+`ViewState` now holds one `Revealed { Nothing, Field { target, value }, Totp { code, fetching } }`
+in place of `revealed`, `revealed_field`, `totp` and `totp_fetching`, so FR-102 is a property of
+the type rather than of `clear_revealed()`. Behavior is unchanged: the two cancellation tokens,
+the pinning rules and the refresh path all stayed as described above, and `Revealed::Totp` keeps
+its `code` while `fetching` is set so an expiring code stays on screen until its replacement
+lands.
+
 ---
 
 ## R4 — Preferences must survive a stored `open_detail` binding

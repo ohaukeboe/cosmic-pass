@@ -486,7 +486,7 @@ impl cosmic::Application for CosmicPass {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        let ticking = self.model.view.visible && self.model.view.totp.is_some();
+        let ticking = self.model.view.visible && self.model.revealed_totp().is_some();
         let tick = if ticking {
             time::every(Duration::from_secs(1)).map(|_| Message::Core(Msg::Tick(now())))
         } else {

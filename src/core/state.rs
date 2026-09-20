@@ -133,6 +133,61 @@ impl RevealTarget {
     }
 }
 
+/// What the field list is showing unmasked, if anything. At most one value may be revealed
+/// at a time (FR-102), which is why this is one field and not several: a secret and a code
+/// cannot both be on screen if there is only one slot to put either in, and leaving the
+/// surface is one assignment rather than a set of stores that have to be cleared in step.
+#[derive(Debug, Default)]
+pub enum Revealed {
+    /// Every row is masked.
+    #[default]
+    Nothing,
+    /// A secret field, pinned to what it was asked for. `value` is `None` until the fetch
+    /// returns, which is what the row's in-flight marker reads.
+    Field {
+        target: RevealTarget,
+        value: Option<SecretString>,
+    },
+    /// A one-time code. `code` outlives its own period while `fetching` is set, so the
+    /// expiring code stays on screen until its replacement arrives rather than blinking out.
+    Totp {
+        code: Option<TotpDisplay>,
+        fetching: bool,
+    },
+}
+
+impl Revealed {
+    /// The plaintext on screen, if a secret field is the thing revealed and its fetch has
+    /// landed.
+    pub fn value(&self) -> Option<&SecretString> {
+        match self {
+            Revealed::Field { value, .. } => value.as_ref(),
+            Revealed::Nothing | Revealed::Totp { .. } => None,
+        }
+    }
+
+    /// What a revealed field is pinned to, whether or not its value has arrived yet.
+    pub fn field_target(&self) -> Option<&RevealTarget> {
+        match self {
+            Revealed::Field { target, .. } => Some(target),
+            Revealed::Nothing | Revealed::Totp { .. } => None,
+        }
+    }
+
+    /// The one-time code on screen, if a code is the thing revealed and one has landed.
+    pub fn totp_code(&self) -> Option<&TotpDisplay> {
+        match self {
+            Revealed::Totp { code, .. } => code.as_ref(),
+            Revealed::Nothing | Revealed::Field { .. } => None,
+        }
+    }
+
+    /// Whether a one-time-code fetch is in flight for the revealed row.
+    pub fn totp_fetching(&self) -> bool {
+        matches!(self, Revealed::Totp { fetching: true, .. })
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct ViewState {
     pub visible: bool,
@@ -141,18 +196,14 @@ pub struct ViewState {
     pub selected: usize,
     pub mode: Mode,
     pub pending: Option<PendingFetch>,
-    /// The plain value of the field on show unmasked, once fetched.
-    pub revealed: Option<SecretString>,
-    /// What that value belongs to, and what the fetch in flight is for.
-    pub revealed_field: Option<RevealTarget>,
-    pub totp: Option<TotpDisplay>,
+    /// What the field list shows unmasked, and what the fetch in flight is for.
+    pub revealed: Revealed,
     /// A reveal or one-time-code fetch is in flight; cancelled when the field list that
     /// asked for it is left.
     pub reveal_totp_cancel: Option<CancellationToken>,
     /// Cancels just the reveal fetch, so re-masking cannot stop the one-time code fetch
     /// sharing `reveal_totp_cancel`.
     pub reveal_cancel: Option<CancellationToken>,
-    pub totp_fetching: bool,
     pub notice: Option<Notice>,
     /// A copy is waiting for the clipboard helper to take ownership of the selection.
     pub copying: bool,
@@ -350,10 +401,30 @@ impl Model {
     /// target is re-checked against the item on show, so a plaintext can never be drawn
     /// beside a label it was not fetched for even if an invalidation were missed upstream.
     pub fn revealed_value(&self, index: usize) -> Option<&SecretString> {
-        let target = self.view.revealed_field.as_ref()?;
-        let value = self.view.revealed.as_ref()?;
+        let target = self.view.revealed.field_target()?;
+        let value = self.view.revealed.value()?;
         let item = self.target_item()?;
         (target.index == index && target.still_describes(item)).then_some(value)
+    }
+
+    /// The one-time code on screen, if the revealed row is a code row.
+    pub fn revealed_totp(&self) -> Option<&TotpDisplay> {
+        self.view.revealed.totp_code()
+    }
+
+    /// Whether the field at `index` is the one waiting on the fetch that would reveal it.
+    pub fn revealing_field(&self, index: usize) -> bool {
+        self.view.reveal_cancel.is_some()
+            && self
+                .view
+                .revealed
+                .field_target()
+                .is_some_and(|t| t.index == index)
+    }
+
+    /// Whether a one-time code is waiting on the fetch that would reveal or refresh it.
+    pub fn revealing_totp(&self) -> bool {
+        self.view.revealed.totp_fetching()
     }
 
     /// The item behind the selected result row.
@@ -532,23 +603,25 @@ impl Model {
                 // as well.
                 let awaited = self
                     .view
-                    .revealed_field
-                    .as_ref()
+                    .revealed
+                    .field_target()
                     .is_some_and(|t| t.generation == generation && t.index == index);
                 if !self.in_actions(&key) || !awaited {
                     return vec![];
                 }
                 self.view.reveal_cancel = None;
                 match result {
-                    Ok(value) => {
-                        self.view.revealed = Some(value);
+                    Ok(v) => {
+                        if let Revealed::Field { value, .. } = &mut self.view.revealed {
+                            *value = Some(v);
+                        }
                         vec![]
                     }
                     Err(PassError::Cancelled) => vec![],
                     Err(e) => {
                         // The highlight is still on the row that failed, so nothing stays
                         // pinned and the next press retries that same row.
-                        self.view.revealed_field = None;
+                        self.view.revealed = Revealed::Nothing;
                         vec![self.notify(e.to_string())]
                     }
                 }
@@ -556,18 +629,18 @@ impl Model {
             Msg::TotpFetched { key, result } => {
                 // A code fetch that resolved before the cancel reached it still delivers its
                 // value, so the mode alone does not say the code is still wanted. Masking a
-                // row, moving the highlight and leaving the surface all lower `totp_fetching`,
-                // which is what makes a late code land on nothing (FR-103).
-                if !self.in_actions(&key) || !self.view.totp_fetching {
+                // row, moving the highlight and leaving the surface all leave `Revealed`
+                // without a code in flight, which is what makes a late one land on nothing
+                // (FR-103).
+                if !self.in_actions(&key) || !self.view.revealed.totp_fetching() {
                     return vec![];
                 }
-                self.view.totp_fetching = false;
                 match result {
                     Ok(mut codes) => {
                         // A reveal names one row, so only that row's code may be shown — and
                         // if a refresh has since moved the rows so that the highlight no longer
                         // sits on a code, the answer has no home at all.
-                        self.view.totp = self.highlighted_totp_field().and_then(|field| {
+                        let code = self.highlighted_totp_field().and_then(|field| {
                             let code = codes.remove(&field).or_else(|| {
                                 (field == "totp_uri")
                                     .then(|| codes.remove("totp"))
@@ -575,10 +648,20 @@ impl Model {
                             })?;
                             Some(TotpDisplay::new(field, code, now))
                         });
+                        self.view.revealed = Revealed::Totp {
+                            code,
+                            fetching: false,
+                        };
                         vec![]
                     }
-                    Err(PassError::Cancelled) => vec![],
-                    Err(e) => vec![self.notify(e.to_string())],
+                    Err(PassError::Cancelled) => {
+                        self.totp_fetch_settled();
+                        vec![]
+                    }
+                    Err(e) => {
+                        self.totp_fetch_settled();
+                        vec![self.notify(e.to_string())]
+                    }
                 }
             }
             Msg::Tick(now) => {
@@ -586,10 +669,10 @@ impl Model {
                 // row or a closed window leaves nothing to expire and costs no fetch (FR-103).
                 let expired = self
                     .view
-                    .totp
-                    .as_ref()
+                    .revealed
+                    .totp_code()
                     .is_some_and(|t| t.needs_refresh(now));
-                if expired && !self.view.totp_fetching {
+                if expired && !self.view.revealed.totp_fetching() {
                     self.fetch_totp()
                 } else {
                     vec![]
@@ -765,18 +848,23 @@ impl Model {
     /// Forgets every revealed secret and one-time code, and stops the fetches feeding them.
     fn clear_revealed(&mut self) {
         self.drop_reveal();
-        self.view.totp = None;
-        self.view.totp_fetching = false;
         if let Some(cancel) = self.view.reveal_totp_cancel.take() {
             cancel.cancel();
         }
     }
 
-    /// Forgets the revealed secret and stops the fetch still running for it, if any.
+    /// Forgets whatever was revealed and stops the fetch still running for it, if any.
     fn drop_reveal(&mut self) {
-        self.view.revealed = None;
-        self.view.revealed_field = None;
+        self.view.revealed = Revealed::Nothing;
         self.cancel_reveal();
+    }
+
+    /// Lowers the in-flight flag while leaving the code alone: a fetch that failed or was
+    /// beaten to the mark leaves whatever was already on screen where it was.
+    fn totp_fetch_settled(&mut self) {
+        if let Revealed::Totp { fetching, .. } = &mut self.view.revealed {
+            *fetching = false;
+        }
     }
 
     /// Stops the reveal fetch in flight, if any. The reveal has its own token: cancelling
@@ -814,7 +902,16 @@ impl Model {
             return vec![];
         };
         let key = key.clone();
-        self.view.totp_fetching = true;
+        // A refresh keeps the expiring code on screen until its replacement lands; a first
+        // reveal has nothing to keep, having just cleared the surface.
+        let code = match std::mem::take(&mut self.view.revealed) {
+            Revealed::Totp { code, .. } => code,
+            Revealed::Nothing | Revealed::Field { .. } => None,
+        };
+        self.view.revealed = Revealed::Totp {
+            code,
+            fetching: true,
+        };
         vec![Effect::FetchTotp {
             key,
             cancel: self.reveal_totp_token(),
@@ -833,11 +930,13 @@ impl Model {
             return vec![];
         };
         let was_showing = match &entry.source {
-            CopySource::Totp { .. } => self.view.totp.is_some() || self.view.totp_fetching,
+            CopySource::Totp { .. } => {
+                self.view.revealed.totp_code().is_some() || self.view.revealed.totp_fetching()
+            }
             CopySource::Field(_) => entry.field_index.is_some_and(|index| {
                 self.view
-                    .revealed_field
-                    .as_ref()
+                    .revealed
+                    .field_target()
                     .is_some_and(|t| t.key == key && t.index == index)
             }),
         };
@@ -859,7 +958,10 @@ impl Model {
                 let Some(target) = self.reveal_target(&key, index, generation) else {
                     return vec![];
                 };
-                self.view.revealed_field = Some(target);
+                self.view.revealed = Revealed::Field {
+                    target,
+                    value: None,
+                };
                 let cancel = CancellationToken::new();
                 self.view.reveal_cancel = Some(cancel.clone());
                 vec![Effect::FetchReveal {
@@ -1058,7 +1160,7 @@ impl Model {
     /// taken from no longer carries that field at that position. Refreshes are routine — a
     /// window opening triggers one — so an item that came back unchanged keeps its reveal.
     fn drop_stale_reveal(&mut self) {
-        let intact = match &self.view.revealed_field {
+        let intact = match self.view.revealed.field_target() {
             Some(target) => self
                 .item(&target.key)
                 .is_some_and(|item| target.still_describes(item)),
@@ -1209,7 +1311,14 @@ pub(crate) mod tests {
             key: ItemKey::new("s", "a"),
             selected: 0,
         };
-        m.view.revealed = Some(SecretString::from("x"));
+        m.view.revealed = Revealed::Totp {
+            code: Some(TotpDisplay::new(
+                "totp_uri".into(),
+                SecretString::from("x"),
+                0,
+            )),
+            fetching: false,
+        };
         m.view.notice = Some(Notice {
             id: 1,
             text: "n".into(),
@@ -1225,7 +1334,7 @@ pub(crate) mod tests {
         assert!(!m.view.visible);
         assert_eq!(m.view.query, "");
         assert_eq!(m.view.mode, Mode::List);
-        assert!(m.view.revealed.is_none());
+        assert!(matches!(m.view.revealed, Revealed::Nothing));
         assert!(m.view.notice.is_none());
         assert!(m.view.pending.is_none());
         assert!(cancel.is_cancelled());
@@ -1535,7 +1644,7 @@ pub(crate) mod tests {
 
     /// The fetch the list is waiting on; `0` is never issued.
     fn awaited_reveal(m: &Model) -> u64 {
-        m.view.revealed_field.as_ref().map_or(0, |t| t.generation)
+        m.view.revealed.field_target().map_or(0, |t| t.generation)
     }
 
     fn reveal_fetched_for(m: &mut Model, id: &str, generation: u64, index: usize, value: &str) {
@@ -1605,7 +1714,7 @@ pub(crate) mod tests {
             m.revealed_value(2).is_none(),
             "the recovery code is not shown as the PIN"
         );
-        assert!(m.view.revealed.is_none());
+        assert!(m.view.revealed.value().is_none());
     }
 
     #[test]
@@ -1698,10 +1807,10 @@ pub(crate) mod tests {
         };
         m.update(Msg::DataLoaded(listing(vec![shifted])), 2_000);
         assert!(cancel.is_cancelled());
-        assert!(m.view.revealed_field.is_none());
+        assert!(m.view.revealed.field_target().is_none());
         reveal_fetched_for(&mut m, "a", abandoned, 1, "4111");
         assert!(
-            m.view.revealed.is_none(),
+            m.view.revealed.value().is_none(),
             "the result of the abandoned fetch is dropped"
         );
     }
@@ -1714,8 +1823,8 @@ pub(crate) mod tests {
         let fx = m.update(Msg::RefreshFailed(PassError::SignedOut), 0);
         assert_eq!(names(&fx), ["DeleteCache"]);
         assert_eq!(m.session, SessionState::SignedOut);
-        assert!(m.view.revealed.is_none());
-        assert!(m.view.revealed_field.is_none());
+        assert!(m.view.revealed.value().is_none());
+        assert!(m.view.revealed.field_target().is_none());
         assert!(m.revealed_value(1).is_none());
     }
 
@@ -1726,8 +1835,8 @@ pub(crate) mod tests {
         m.update(Msg::ToggleReveal, 0);
         reveal_fetched(&mut m, "a", 1, "4111");
         m.update(Msg::SessionProbed(Ok(account("two"))), 0);
-        assert!(m.view.revealed.is_none());
-        assert!(m.view.revealed_field.is_none());
+        assert!(m.view.revealed.value().is_none());
+        assert!(m.view.revealed.field_target().is_none());
         assert!(m.revealed_value(1).is_none());
     }
 
@@ -1756,7 +1865,7 @@ pub(crate) mod tests {
         );
         assert!(m.data.items.is_empty(), "its items are gone too");
         assert!(
-            m.view.revealed.is_none() && m.revealed_value(1).is_none(),
+            m.view.revealed.value().is_none() && m.revealed_value(1).is_none(),
             "its plaintext is not left on screen (FR-025)"
         );
     }
@@ -1775,7 +1884,7 @@ pub(crate) mod tests {
         );
         assert!(m.data.items.is_empty(), "its items are gone too");
         assert!(
-            m.view.revealed.is_none() && m.revealed_value(1).is_none(),
+            m.view.revealed.value().is_none() && m.revealed_value(1).is_none(),
             "its plaintext is not left on screen (FR-025)"
         );
     }
@@ -1794,7 +1903,7 @@ pub(crate) mod tests {
             let fx = m.update(Msg::SessionProbed(Ok(account("two"))), 0);
             assert!(names(&fx).contains(&"DeleteCache"), "{prior:?}");
             assert!(m.data.items.is_empty(), "{prior:?}");
-            assert!(m.view.revealed.is_none(), "{prior:?}");
+            assert!(m.view.revealed.value().is_none(), "{prior:?}");
             assert!(m.revealed_value(1).is_none(), "{prior:?}");
         }
     }
@@ -1821,7 +1930,10 @@ pub(crate) mod tests {
         m.update(Msg::RefreshFailed(PassError::SignedOut), 0);
         assert!(cancel.is_cancelled(), "the old account's fetch is stopped");
         reveal_fetched_for(&mut m, "a", abandoned, 1, "4111");
-        assert!(m.view.revealed.is_none(), "a late result is dropped");
+        assert!(
+            m.view.revealed.value().is_none(),
+            "a late result is dropped"
+        );
     }
 
     /// The field list open on `items[0]`, highlight on the first row.
@@ -1866,8 +1978,8 @@ pub(crate) mod tests {
         assert!(m.revealed_value(3).is_none());
         let fx = m.update(Msg::ToggleReveal, 0);
         assert!(fx.is_empty(), "masking asks for nothing: {fx:?}");
-        assert!(m.view.revealed.is_none());
-        assert!(m.view.revealed_field.is_none());
+        assert!(m.view.revealed.value().is_none());
+        assert!(m.view.revealed.field_target().is_none());
     }
 
     #[test]
@@ -1892,7 +2004,7 @@ pub(crate) mod tests {
         let cancel = cancel.clone();
         assert!(m.update(Msg::ToggleReveal, 0).is_empty());
         assert!(cancel.is_cancelled());
-        assert!(m.view.revealed_field.is_none());
+        assert!(m.view.revealed.field_target().is_none());
     }
 
     #[test]
@@ -1904,8 +2016,8 @@ pub(crate) mod tests {
             reveal_fetched(&mut m, "a", 2, "737");
             assert!(m.revealed_value(2).is_some(), "{movement:?}");
             m.update(movement.clone(), 0);
-            assert!(m.view.revealed.is_none(), "{movement:?}");
-            assert!(m.view.revealed_field.is_none(), "{movement:?}");
+            assert!(m.view.revealed.value().is_none(), "{movement:?}");
+            assert!(m.view.revealed.field_target().is_none(), "{movement:?}");
         }
     }
 
@@ -1919,7 +2031,7 @@ pub(crate) mod tests {
         let cancel = cancel.clone();
         m.update(Msg::SelectNext, 0);
         assert!(cancel.is_cancelled());
-        assert!(m.view.revealed_field.is_none());
+        assert!(m.view.revealed.field_target().is_none());
     }
 
     #[test]
@@ -1928,10 +2040,10 @@ pub(crate) mod tests {
         highlight(&mut m, 4);
         m.update(Msg::ToggleReveal, 0);
         totp_fetched(&mut m, "a", &[("totp_uri", "123456")], 0);
-        assert!(m.view.totp.is_some());
+        assert!(m.view.revealed.totp_code().is_some());
         m.update(Msg::SelectPrev, 0);
-        assert!(m.view.totp.is_none());
-        assert!(!m.view.totp_fetching);
+        assert!(m.view.revealed.totp_code().is_none());
+        assert!(!m.view.revealed.totp_fetching());
     }
 
     #[test]
@@ -1942,22 +2054,22 @@ pub(crate) mod tests {
         let fx = m.update(Msg::ToggleReveal, 0);
         assert!(fx.is_empty(), "no fetch: {fx:?}");
         assert!(m.view.notice.is_none(), "and no notice either (FR-105)");
-        assert!(m.view.revealed.is_none());
-        assert!(m.view.revealed_field.is_none());
+        assert!(m.view.revealed.value().is_none());
+        assert!(m.view.revealed.field_target().is_none());
     }
 
     #[test]
     fn revealing_a_one_time_code_row_fetches_its_code() {
         let mut m = field_list(vec![totp_card("a")]);
         assert!(
-            m.view.totp.is_none() && !m.view.totp_fetching,
+            m.view.revealed.totp_code().is_none() && !m.view.revealed.totp_fetching(),
             "opening the list costs no fetch"
         );
         highlight(&mut m, 4);
         let fx = m.update(Msg::ToggleReveal, 0);
         assert!(matches!(fx[..], [Effect::FetchTotp { .. }]), "{fx:?}");
         totp_fetched(&mut m, "a", &[("totp_uri", "123456")], 0);
-        let shown = m.view.totp.as_ref().expect("a code is on screen");
+        let shown = m.view.revealed.totp_code().expect("a code is on screen");
         assert_eq!(shown.code.expose_secret(), "123456");
         assert!(shown.valid_until > 0);
     }
@@ -1970,8 +2082,8 @@ pub(crate) mod tests {
         totp_fetched(&mut m, "a", &[("totp_uri", "123456")], 0);
         let until = m
             .view
-            .totp
-            .as_ref()
+            .revealed
+            .totp_code()
             .expect("a code is on screen")
             .valid_until;
         assert!(m.update(Msg::Tick(until - 1), 0).is_empty(), "still valid");
@@ -1980,7 +2092,7 @@ pub(crate) mod tests {
         totp_fetched(&mut m, "a", &[("totp_uri", "654321")], until);
         // Masking the row ends the refresh: a code nobody is looking at costs no fetch.
         m.update(Msg::ToggleReveal, 0);
-        assert!(m.view.totp.is_none());
+        assert!(m.view.revealed.totp_code().is_none());
         assert!(m.update(Msg::Tick(until + 600), 0).is_empty());
     }
 
@@ -1994,14 +2106,14 @@ pub(crate) mod tests {
         m.update(Msg::SelectPrev, 0);
         let fx = m.update(Msg::ToggleReveal, 0);
         assert_eq!(revealing(&fx), Some((3, "pin")));
-        assert!(m.view.totp.is_none());
+        assert!(m.view.revealed.totp_code().is_none());
         reveal_fetched(&mut m, "a", 3, "0000");
         // And back to the code: the secret goes with it.
         highlight(&mut m, 1);
         let fx = m.update(Msg::ToggleReveal, 0);
         assert!(matches!(fx[..], [Effect::FetchTotp { .. }]), "{fx:?}");
-        assert!(m.view.revealed.is_none());
-        assert!(m.view.revealed_field.is_none());
+        assert!(m.view.revealed.value().is_none());
+        assert!(m.view.revealed.field_target().is_none());
     }
 
     /// A card carrying a second one-time code, as an item with a backup authenticator has.
@@ -2027,7 +2139,7 @@ pub(crate) mod tests {
             &[("totp_uri", "111111"), ("backup", "222222")],
             0,
         );
-        let shown = m.view.totp.as_ref().expect("a code is on screen");
+        let shown = m.view.revealed.totp_code().expect("a code is on screen");
         assert_eq!(shown.field, "backup");
         assert_eq!(shown.code.expose_secret(), "222222");
     }
@@ -2041,10 +2153,10 @@ pub(crate) mod tests {
         assert!(m.update(Msg::ToggleReveal, 0).is_empty());
         totp_fetched(&mut m, "a", &[("totp_uri", "123456")], 0);
         assert!(
-            m.view.totp.is_none(),
+            m.view.revealed.totp_code().is_none(),
             "the masked row stays masked (FR-103)"
         );
-        assert!(!m.view.totp_fetching);
+        assert!(!m.view.revealed.totp_fetching());
     }
 
     #[test]
@@ -2058,7 +2170,10 @@ pub(crate) mod tests {
         assert_eq!(revealing(&fx), Some((3, "pin")));
         reveal_fetched(&mut m, "a", 3, "0000");
         totp_fetched(&mut m, "a", &[("totp_uri", "123456")], 0);
-        assert!(m.view.totp.is_none(), "the abandoned code is dropped");
+        assert!(
+            m.view.revealed.totp_code().is_none(),
+            "the abandoned code is dropped"
+        );
         assert!(
             m.revealed_value(3).is_some(),
             "and the secret the user did ask for stays on screen (FR-102)"
@@ -2087,7 +2202,7 @@ pub(crate) mod tests {
             2_000,
         );
         assert!(
-            m.view.totp.is_none(),
+            m.view.revealed.totp_code().is_none(),
             "no code surfaces on a row the user never asked about"
         );
     }
@@ -2101,7 +2216,10 @@ pub(crate) mod tests {
         let fx = m.update(Msg::ToggleReveal, 0);
         assert_eq!(revealing(&fx), Some((2, "cvv")));
         reveal_fetched_for(&mut m, "a", abandoned, 1, "4111");
-        assert!(m.view.revealed.is_none(), "the late result is dropped");
+        assert!(
+            m.view.revealed.value().is_none(),
+            "the late result is dropped"
+        );
         assert!(m.revealed_value(1).is_none());
         assert!(m.revealed_value(2).is_none());
     }
@@ -2111,7 +2229,7 @@ pub(crate) mod tests {
         let mut m = field_list(vec![card("a")]);
         let generation = reveal_id(&m.update(Msg::ToggleReveal, 0));
         reveal_fetched_for(&mut m, "a", generation, 3, "0000");
-        assert!(m.view.revealed.is_none());
+        assert!(m.view.revealed.value().is_none());
         assert!(m.revealed_value(3).is_none());
     }
 
@@ -2140,8 +2258,8 @@ pub(crate) mod tests {
             reveal_fetched(&mut m, "a", 1, "4111");
             assert!(m.revealed_value(1).is_some());
             m.update(Msg::DataLoaded(listing(vec![reshaped])), 2_000);
-            assert!(m.view.revealed.is_none());
-            assert!(m.view.revealed_field.is_none());
+            assert!(m.view.revealed.value().is_none());
+            assert!(m.view.revealed.field_target().is_none());
             assert!(m.revealed_value(1).is_none());
         }
     }
@@ -2153,10 +2271,10 @@ pub(crate) mod tests {
         let fx = reveal_failed(&mut m, "a", 1);
         assert!(matches!(fx[..], [Effect::ExpireNotice { .. }]), "{fx:?}");
         assert!(m.view.notice.is_some(), "the failure is reported");
-        assert!(m.view.revealed.is_none());
+        assert!(m.view.revealed.value().is_none());
         assert!(m.revealed_value(1).is_none());
         // Nothing stays pinned, so the next press on the row retries it.
-        assert!(m.view.revealed_field.is_none());
+        assert!(m.view.revealed.field_target().is_none());
         let fx = m.update(Msg::ToggleReveal, 0);
         assert_eq!(revealing(&fx), Some((1, "number")));
     }
@@ -2176,7 +2294,7 @@ pub(crate) mod tests {
         );
         assert!(fx.is_empty(), "a cancellation is not news: {fx:?}");
         assert!(m.view.notice.is_none());
-        assert!(m.view.revealed.is_none());
+        assert!(m.view.revealed.value().is_none());
     }
 
     #[test]
@@ -2186,9 +2304,9 @@ pub(crate) mod tests {
             m.update(Msg::ToggleReveal, 0);
             reveal_fetched(&mut m, "a", 1, "4111");
             m.update(leave.clone(), 0);
-            assert!(m.view.revealed.is_none(), "{leave:?}");
-            assert!(m.view.revealed_field.is_none(), "{leave:?}");
-            assert!(m.view.totp.is_none(), "{leave:?}");
+            assert!(m.view.revealed.value().is_none(), "{leave:?}");
+            assert!(m.view.revealed.field_target().is_none(), "{leave:?}");
+            assert!(m.view.revealed.totp_code().is_none(), "{leave:?}");
         }
     }
 

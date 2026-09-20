@@ -53,7 +53,7 @@ enum Reveal {
 fn reveal_state(model: &Model, source: &CopySource, field_index: Option<usize>) -> Reveal {
     match source {
         CopySource::Totp { field } => {
-            if model.view.totp.as_ref().is_some_and(|t| t.field == *field) {
+            if model.revealed_totp().is_some_and(|t| t.field == *field) {
                 Reveal::Shown
             } else {
                 Reveal::Masked
@@ -77,7 +77,7 @@ fn reveal_state(model: &Model, source: &CopySource, field_index: Option<usize>) 
 /// read as an empty field.
 fn value_hint(model: &Model, source: &CopySource, field_index: Option<usize>, now: i64) -> String {
     match source {
-        CopySource::Totp { field } => match &model.view.totp {
+        CopySource::Totp { field } => match model.revealed_totp() {
             Some(shown) if shown.field == *field => {
                 format!("{} · {}s", shown.code.expose_secret(), shown.remaining(now))
             }
@@ -94,17 +94,8 @@ fn value_hint(model: &Model, source: &CopySource, field_index: Option<usize>, no
 /// sitting masked as if the press had been ignored.
 fn fetching(model: &Model, source: &CopySource, field_index: Option<usize>) -> bool {
     match source {
-        CopySource::Totp { .. } => model.view.totp_fetching,
-        CopySource::Field(_) => {
-            model.view.reveal_cancel.is_some()
-                && field_index.is_some_and(|index| {
-                    model
-                        .view
-                        .revealed_field
-                        .as_ref()
-                        .is_some_and(|t| t.index == index)
-                })
-        }
+        CopySource::Totp { .. } => model.revealing_totp(),
+        CopySource::Field(_) => field_index.is_some_and(|index| model.revealing_field(index)),
     }
 }
 
