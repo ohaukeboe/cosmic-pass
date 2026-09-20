@@ -257,9 +257,9 @@ a test that parses the spawned argv with the real parser.
 | V1 | Real `pass-cli` JSON shapes and error texts | Done 2026-09-17 (locked-session text still unobserved) |
 | V2 | `iced_test` works with libcosmic elements | **No** (2026-09-17): at libcosmic `87ab817` the `iced_test` crate in the pop-os iced fork does not compile (`renderer::Style` gained `icon_color`/`scale_factor`, `runtime::Action` gained `Dnd`/`PlatformSpecific`). UI behavior stays covered by reducer tests plus quickstart V2–V6. Re-check when libcosmic is bumped. |
 | V3 | Selection clears when helper is killed; hint mime offered | **Yes** (2026-09-17): killing the helper leaves "Nothing is copied"; the helper exits when another client copies; `x-kde-passwordManagerHint=secret` is offered. |
-| V4 | `pass-cli login` needs no TTY | **Still open**: the live run never signed the real account out, so the browser sign-in path is unexercised. The signed-out panel itself was verified with a simulated CLI. |
-| V6 | Focus loss hides the popup (FR-003) | **Still open**: not drivable on a live session without clicking into the user's own windows. Escape and the hide command were verified instead. |
-| V7 | Locked-keyring path (FR-024a) | **Still open**: only `COSMIC_PASS_NO_KEYRING=1` was exercised (no cache written, app works). A genuinely locked keyring was never observed. |
+| V4 | `pass-cli login` needs no TTY | **Partly** (2026-09-20): run against a real `pass-cli logout`. The signed-out panel appeared and the login URL reached it, so `pass-cli login` does stream its URL without a TTY. Pressing the link opened no browser: `xdg-open` is not on the systemd unit's PATH, so the spawn fails with `os error 2` and the popup hides with no visible error (cosmic-pass-wqx.51). The journal also keeps the full sign-in URL, payload included (cosmic-pass-wqx.52). |
+| V6 | Focus loss hides the popup (FR-003) | **Yes** (2026-09-20): with the popup open, clicking into another window hid it without Escape. |
+| V7 | Locked-keyring path (FR-024a) | **Yes** (2026-09-20): the gnome-keyring `login` collection was locked over the Secret Service (`org.freedesktop.Secret.Service.Lock`) and the app restarted. It stayed usable and `~/.cache/cosmic-pass/cache.bin` was not rewritten, which is the `KeyState::Unavailable` path FR-024a asks for. |
 | V5 | Typing reaches the search field | Fixed 2026-09-18: the field needs `always_active()` plus a focus task on `LayerEvent::Focused`; an early focus task alone is lost while the layer surface is being created. |
 
 ### Open latency (SC-001)
