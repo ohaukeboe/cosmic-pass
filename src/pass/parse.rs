@@ -4,7 +4,7 @@
 //! Secret values are skipped by serde without being copied into owned strings, except
 //! where a field's emptiness matters ([`NonEmpty`]), which only borrows or zeroizes.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 
 use secrecy::SecretString;
@@ -454,8 +454,37 @@ impl RawItem {
         if let Some(content) = self.content {
             content.fill(&mut summary);
         }
+        dedupe_selectors(&mut summary);
         summary
     }
+}
+
+/// Drops every field and one-time code whose `pass-cli` selector another entry of the same
+/// item repeats, keeping the one `pass-cli` actually resolves.
+///
+/// [`FieldRef::name`] is the selector, not just a label. `item view --field=` resolves a
+/// repeated name to the LAST field carrying it (verified against `pass-cli` with a login
+/// holding a password beside a custom Hidden field of the same name), and `item totp`
+/// returns a map keyed by name, so an earlier namesake cannot be addressed at all. Offering
+/// one anyway rendered the last field's value under the earlier field's label, which could
+/// put a login password on screen or on the clipboard under an unrelated name
+/// (cosmic-pass-wqx.41). The survivor keeps its own position and label; the shadowed entry
+/// is unreachable either way, because `pass-cli` exposes no section-qualified or positional
+/// selector to address it with.
+///
+/// This runs once per item, after every source has pushed into the summary - the kind body,
+/// `extra_fields`, each section, and the trailing note - because a collision can span any
+/// two of them. Fields and one-time codes are separate namespaces: they are read back by
+/// different commands.
+fn dedupe_selectors(s: &mut ItemSummary) {
+    fn keep_last<T>(items: &mut Vec<T>, name: impl Fn(&T) -> &str) {
+        let mut seen: HashSet<String> = HashSet::new();
+        items.reverse();
+        items.retain(|i| seen.insert(name(i).to_owned()));
+        items.reverse();
+    }
+    keep_last(&mut s.fields, |f| f.name.as_str());
+    keep_last(&mut s.totp_fields, |n| n.as_str());
 }
 
 fn secret_if(fields: &mut Vec<FieldRef>, present: NonEmpty, name: &str, label: &str) {
@@ -904,6 +933,93 @@ mod tests {
         assert_eq!(names, ["Door code"]);
         assert!(item.field("Door code").is_some_and(|f| f.secret));
         assert_eq!(item.totp_fields, ["Authenticator"]);
+    }
+
+    /// One login carrying a password plus the given custom-field JSON objects.
+    fn login_with_password_and_extras(extra: &str) -> ItemSummary {
+        let json = format!(
+            r#"{{"items":[{{"id":"dupe","state":"Active","content":{{"title":"Dupe",
+              "note":"","content":{{"Login":{{"password":"SECRET-FIXTURE-standard"}}}},
+              "extra_fields":[{extra}]}}}}]}}"#
+        );
+        parse_items(json.as_bytes(), &ShareId("share-a".into()), "Personal")
+            .unwrap()
+            .remove(0)
+    }
+
+    /// `FieldRef::name` is the `pass-cli` selector, and `item view --field=` resolves a
+    /// repeated name to the LAST field carrying it. Offering both would render the last
+    /// field's value under the first field's label, so only the addressable one survives
+    /// (cosmic-pass-wqx.41).
+    #[test]
+    fn a_custom_field_shadowing_a_standard_one_leaves_only_the_addressable_row() {
+        let item = login_with_password_and_extras(
+            r#"{"name":"password","content":{"Hidden":"SECRET-FIXTURE-custom"}}"#,
+        );
+        let names: Vec<_> = item.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names, ["password"]);
+        // The surviving row is the custom field, whose label is its own name, not the
+        // built-in "Password" label of the shadowed standard field.
+        assert_eq!(
+            item.field("password").map(|f| f.label.as_str()),
+            Some("password")
+        );
+    }
+
+    /// Two custom fields can repeat a name within one item just as easily as a custom field
+    /// can shadow a standard one; the same last-wins rule applies.
+    #[test]
+    fn repeated_custom_field_names_collapse_to_the_last() {
+        let item = login_with_password_and_extras(
+            r#"{"name":"PIN","content":{"Hidden":"SECRET-FIXTURE-first"}},
+               {"name":"Keep","content":{"Hidden":"SECRET-FIXTURE-keep"}},
+               {"name":"PIN","content":{"Hidden":"SECRET-FIXTURE-second"}}"#,
+        );
+        let names: Vec<_> = item.fields.iter().map(|f| f.name.as_str()).collect();
+        // The standard `password` has no namesake here, so it is untouched.
+        assert_eq!(names, ["password", "Keep", "PIN"]);
+    }
+
+    /// A name repeated across two different sections collides exactly like one repeated
+    /// inside a single field list, so the rule has to span every source that pushes into
+    /// `ItemSummary::fields`, not one `custom_fields` call.
+    #[test]
+    fn a_name_repeated_across_sections_collapses_too() {
+        let json = r#"{"items":[{"id":"sections","state":"Active","content":{"title":"Sections",
+          "note":"","content":{"Custom":{"sections":[
+            {"section_name":"One","section_fields":[
+              {"name":"PIN","content":{"Hidden":"SECRET-FIXTURE-one"}}]},
+            {"section_name":"Two","section_fields":[
+              {"name":"PIN","content":{"Hidden":"SECRET-FIXTURE-two"}}]}]}},
+          "extra_fields":[]}}]}"#;
+        let item = parse_items(json.as_bytes(), &ShareId("share-a".into()), "Personal")
+            .unwrap()
+            .remove(0);
+        let names: Vec<_> = item.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names, ["PIN"]);
+    }
+
+    /// `item totp` returns a map keyed by field name, so a repeated one-time-code name is
+    /// as unaddressable as a repeated field name and collapses the same way.
+    #[test]
+    fn repeated_one_time_code_names_collapse_to_the_last() {
+        let item = login_with_password_and_extras(
+            r#"{"name":"Authenticator","content":{"Totp":"otpauth://first"}},
+               {"name":"Authenticator","content":{"Totp":"otpauth://second"}}"#,
+        );
+        assert_eq!(item.totp_fields, ["Authenticator"]);
+    }
+
+    /// Distinct names are untouched: collapsing must not reorder or drop anything that
+    /// `pass-cli` can still address.
+    #[test]
+    fn distinct_field_names_keep_their_order() {
+        let item = login_with_password_and_extras(
+            r#"{"name":"Door code","content":{"Hidden":"SECRET-FIXTURE-door"}},
+               {"name":"Member id","content":{"Hidden":"SECRET-FIXTURE-member"}}"#,
+        );
+        let names: Vec<_> = item.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names, ["password", "Door code", "Member id"]);
     }
 
     /// A content variant this version has no name for is as unshowable as a text field, so
