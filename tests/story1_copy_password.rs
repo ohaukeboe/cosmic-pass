@@ -152,8 +152,11 @@ async fn copied_item_is_listed_first_on_empty_query() {
     assert_eq!(h.result_ids()[0], "gh");
 }
 
+/// The listing's stored value is a snapshot from the last refresh, so a copy re-reads the
+/// field rather than trusting it. Here the backend still agrees with the listing; the next
+/// test covers the case where it does not (cosmic-pass-wqx.34).
 #[tokio::test]
-async fn stored_plain_value_is_copied_without_backend_call() {
+async fn a_plain_field_is_fetched_on_copy() {
     let mut h = Harness::new(FakeBackend::with_items(vec![{
         let mut i = summary("u", "Only user", ItemKind::Login);
         i.fields = vec![FieldRef::plain("username", "Username", "alice".into())];
@@ -166,7 +169,51 @@ async fn stored_plain_value_is_copied_without_backend_call() {
         h.clipboard.copies(),
         vec![("alice".to_owned(), false, Duration::from_secs(90))]
     );
-    assert_eq!(h.backend.field_calls(), 0);
+    assert_eq!(h.backend.field_calls(), 1);
+}
+
+/// The value the user gets is the one `pass-cli` holds now, not the one the last refresh
+/// cached, so an edit made in Proton Pass since is picked up.
+#[tokio::test]
+async fn a_plain_field_edited_since_the_refresh_copies_the_current_value() {
+    let backend = FakeBackend::with_items(vec![{
+        let mut i = summary("u", "Only user", ItemKind::Login);
+        i.fields = vec![FieldRef::plain("username", "Username", "alice".into())];
+        i
+    }]);
+    backend.set_field(&ItemKey::new("s", "u"), "username", "renamed-since");
+    let mut h = Harness::new(backend);
+    h.send(Msg::RefreshRequested).await;
+    h.send(Msg::Show).await;
+    h.send(Msg::CopyPrimary).await;
+    assert_eq!(
+        h.clipboard.copies(),
+        vec![("renamed-since".to_owned(), false, Duration::from_secs(90))]
+    );
+}
+
+/// An item deleted in Proton Pass since the last refresh must report itself, not hand back
+/// the cached value as though the copy had succeeded. The notice path exists only behind the
+/// fetch, which is why a stored value may not short-circuit it.
+#[tokio::test]
+async fn a_deleted_item_notifies_even_for_a_plain_field() {
+    let backend = FakeBackend::with_items(vec![{
+        let mut i = summary("u", "Only user", ItemKind::Login);
+        i.fields = vec![FieldRef::plain("username", "Username", "alice".into())];
+        i
+    }]);
+    backend.fail_field(&ItemKey::new("s", "u"), "username", PassError::NotFound);
+    let mut h = Harness::new(backend);
+    h.send(Msg::RefreshRequested).await;
+    h.send(Msg::Show).await;
+    let refreshes = h.backend.list_calls();
+    h.send(Msg::CopyPrimary).await;
+    assert!(h.clipboard.copies().is_empty());
+    assert_eq!(
+        h.model.view.notice.as_ref().map(|n| n.text.as_str()),
+        Some("Item no longer exists")
+    );
+    assert_eq!(h.backend.list_calls(), refreshes + 1);
 }
 
 #[tokio::test]

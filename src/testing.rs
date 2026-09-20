@@ -70,12 +70,26 @@ pub struct FakeBackend {
 }
 
 impl FakeBackend {
+    /// Every non-secret field's stored value is pre-registered, because `pass-cli` returns
+    /// the same value the listing carried. Copying fetches every field, secret or not
+    /// (cosmic-pass-wqx.34), so without this a plain field would answer `FieldMissing`.
+    /// A test that wants the fetch to disagree with the listing, or to fail, overrides the
+    /// entry with `set_field` or `fail_field`.
     pub fn with_items(items: Vec<ItemSummary>) -> Self {
+        let fields = items
+            .iter()
+            .flat_map(|i| {
+                i.fields.iter().filter_map(|f| {
+                    let value = f.value.clone()?;
+                    Some(((i.key.clone(), f.name.clone()), Ok(value)))
+                })
+            })
+            .collect();
         Self {
             state: Mutex::new(BackendState {
                 account: Ok(AccountId("account-1".into())),
                 listing: Ok(listing(items)),
-                fields: HashMap::new(),
+                fields,
                 totp: HashMap::new(),
                 login_lines: Vec::new(),
                 login_result: Ok(()),

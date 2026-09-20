@@ -135,15 +135,18 @@ async fn the_action_list_shows_why_a_copy_did_nothing() {
     );
 }
 
+/// A website is re-read on copy like any other field, so a URL edited in Proton Pass since
+/// the last refresh is not copied stale (cosmic-pass-wqx.34).
 #[tokio::test]
-async fn copy_url_needs_no_backend_call() {
+async fn copy_url_fetches_the_current_value() {
     let mut h = opened("github").await;
     h.send(Msg::CopyUrl).await;
     assert_eq!(
         last_copy(&h),
         Some(("https://github.com/login".into(), false))
     );
-    assert_eq!(h.backend.field_calls() + h.backend.totp_calls(), 0);
+    assert_eq!(h.backend.field_calls(), 1);
+    assert_eq!(h.backend.totp_calls(), 0);
     assert_eq!(
         h.clipboard.copies()[0].2,
         Duration::from_secs(90),
@@ -206,9 +209,9 @@ async fn action_list_lists_every_website() {
         Some(("https://gist.github.com".into(), false))
     );
     assert_eq!(
-        h.backend.field_calls() + h.backend.totp_calls(),
-        0,
-        "a website is copied from the summary"
+        (h.backend.field_calls(), h.backend.totp_calls()),
+        (1, 0),
+        "a website is fetched on copy, not taken from the summary"
     );
 }
 
