@@ -80,15 +80,74 @@ fn id_args(key: &ItemKey) -> [String; 2] {
     ]
 }
 
+/// Every `pass-cli` command line this app sends, in one place.
+///
+/// `pass-cli` publishes no stability policy, so these argv are the app's most fragile
+/// assumption, and they have to be assertable from outside. `tests/pass_cli_contract.rs` runs
+/// each one against the real binary to prove it still parses; sourcing them from here rather
+/// than retyping them is what makes that test fail when this file changes.
+///
+/// IDs are always `--flag=VALUE`: a share id can begin with `-`, and the space-separated form
+/// then fails with `unexpected argument`.
+pub mod argv {
+    use crate::model::ItemKey;
+
+    pub fn version() -> Vec<String> {
+        super::args(["--version"])
+    }
+
+    pub fn info() -> Vec<String> {
+        super::args(["info", "--output", "json"])
+    }
+
+    pub fn vault_list() -> Vec<String> {
+        super::args(["vault", "list", "--output", "json"])
+    }
+
+    pub fn item_list(share: &str) -> Vec<String> {
+        vec![
+            "item".into(),
+            "list".into(),
+            format!("--share-id={share}"),
+            "--output".into(),
+            "json".into(),
+            "--show-secrets".into(),
+        ]
+    }
+
+    pub fn item_view(key: &ItemKey, field: &str) -> Vec<String> {
+        let [share, item] = super::id_args(key);
+        vec![
+            "item".into(),
+            "view".into(),
+            share,
+            item,
+            format!("--field={field}"),
+        ]
+    }
+
+    pub fn item_totp(key: &ItemKey) -> Vec<String> {
+        let [share, item] = super::id_args(key);
+        vec![
+            "item".into(),
+            "totp".into(),
+            share,
+            item,
+            "--output".into(),
+            "json".into(),
+        ]
+    }
+
+    pub fn login() -> Vec<String> {
+        super::args(["login"])
+    }
+}
+
 impl<R: CommandRunner + 'static> PassBackend for PassCli<R> {
     fn account(&self) -> BoxFuture<'_, Result<AccountId>> {
         Box::pin(async move {
             let out = self
-                .run(
-                    args(["info", "--output", "json"]),
-                    INFO_TIMEOUT,
-                    CancellationToken::new(),
-                )
+                .run(argv::info(), INFO_TIMEOUT, CancellationToken::new())
                 .await?;
             super::parse::parse_account(&out.stdout)
         })
@@ -97,11 +156,7 @@ impl<R: CommandRunner + 'static> PassBackend for PassCli<R> {
     fn version(&self) -> BoxFuture<'_, Result<CliVersion>> {
         Box::pin(async move {
             let out = self
-                .run(
-                    args(["--version"]),
-                    VERSION_TIMEOUT,
-                    CancellationToken::new(),
-                )
+                .run(argv::version(), VERSION_TIMEOUT, CancellationToken::new())
                 .await?;
             super::parse::parse_version(&out.stdout)
         })
@@ -110,25 +165,14 @@ impl<R: CommandRunner + 'static> PassBackend for PassCli<R> {
     fn list_all(&self) -> BoxFuture<'_, Result<Listing>> {
         Box::pin(async move {
             let out = self
-                .run(
-                    args(["vault", "list", "--output", "json"]),
-                    LIST_TIMEOUT,
-                    CancellationToken::new(),
-                )
+                .run(argv::vault_list(), LIST_TIMEOUT, CancellationToken::new())
                 .await?;
             let vaults = super::parse::parse_vaults(&out.stdout)?;
             // Dropping the remaining futures on the first error cancels their processes.
             let per_vault = futures::future::try_join_all(vaults.iter().map(|vault| async move {
                 let out = self
                     .run(
-                        vec![
-                            "item".into(),
-                            "list".into(),
-                            format!("--share-id={}", vault.share_id.0),
-                            "--output".into(),
-                            "json".into(),
-                            "--show-secrets".into(),
-                        ],
+                        argv::item_list(&vault.share_id.0),
                         LIST_TIMEOUT,
                         CancellationToken::new(),
                     )
@@ -150,15 +194,9 @@ impl<R: CommandRunner + 'static> PassBackend for PassCli<R> {
         cancel: CancellationToken,
     ) -> BoxFuture<'_, Result<SecretString>> {
         Box::pin(async move {
-            let [share, item] = id_args(&key);
-            let argv = vec![
-                "item".into(),
-                "view".into(),
-                share,
-                item,
-                format!("--field={field}"),
-            ];
-            let out = self.run(argv, FIELD_TIMEOUT, cancel).await?;
+            let out = self
+                .run(argv::item_view(&key, &field), FIELD_TIMEOUT, cancel)
+                .await?;
             super::parse::parse_field(&out.stdout)
         })
     }
@@ -169,22 +207,15 @@ impl<R: CommandRunner + 'static> PassBackend for PassCli<R> {
         cancel: CancellationToken,
     ) -> BoxFuture<'_, Result<BTreeMap<String, SecretString>>> {
         Box::pin(async move {
-            let [share, item] = id_args(&key);
-            let argv = vec![
-                "item".into(),
-                "totp".into(),
-                share,
-                item,
-                "--output".into(),
-                "json".into(),
-            ];
-            let out = self.run(argv, FIELD_TIMEOUT, cancel).await?;
+            let out = self
+                .run(argv::item_totp(&key), FIELD_TIMEOUT, cancel)
+                .await?;
             super::parse::parse_totp(&out.stdout)
         })
     }
 
     fn login(&self, lines: mpsc::Sender<String>) -> BoxFuture<'_, Result<()>> {
         self.runner
-            .run_streaming(args(["login"]), LOGIN_TIMEOUT, lines)
+            .run_streaming(argv::login(), LOGIN_TIMEOUT, lines)
     }
 }
