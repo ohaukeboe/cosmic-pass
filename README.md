@@ -18,9 +18,11 @@ popup is gone.
 ## Requirements
 
 - COSMIC desktop (Wayland).
-- A signed-in `pass-cli` (`pass-cli login`). The flake package supplies `proton-pass-cli`, so
-  you only need to install it yourself for a non-flake build, or to override the bundled one
-  with a different version — a `pass-cli` on `PATH` takes precedence. 2.3 or newer.
+- A signed-in `pass-cli` (`pass-cli login`), 2.3 or newer. The flake package supplies a pinned
+  `proton-pass-cli`, so you only need to install it yourself for a non-flake build, or to
+  override the bundled one with a different version — a `pass-cli` on `PATH` takes precedence.
+  The app reads `pass-cli --version` at startup and warns, without refusing to run, when it is
+  older than the version it was tested against.
 - A Secret Service provider (for example gnome-keyring), both for the encrypted item cache and
   for `pass-cli`'s own database key: the app always runs `pass-cli` with
   `PROTON_PASS_LINUX_KEYRING=dbus`. `pass-cli`'s default kernel keyring hands a key only to the
@@ -44,10 +46,8 @@ Add the flake as an input:
 {
   inputs = {
     nixpkgs.url = "https://channels.nixos.org/nixos-unstable/nixexprs.tar.zst";
-    cosmic-pass = {
-      url = "github:ohaukeboe/cosmic-pass";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    # No `inputs.nixpkgs.follows` here, on purpose — see the note below.
+    cosmic-pass.url = "github:ohaukeboe/cosmic-pass";
   };
 
   outputs =
@@ -98,6 +98,36 @@ in
   };
 }
 ```
+
+### Why there is no `inputs.nixpkgs.follows`
+
+Adding `inputs.cosmic-pass.inputs.nixpkgs.follows = "nixpkgs"` is a common reflex, and here it
+breaks things. It replaces the nixpkgs this app was tested against, and that nixpkgs is where
+`pass-cli` — the tool the app drives for everything — comes from. `pass-cli` publishes no
+stability policy: it has renamed a subcommand and reused the old name for something else,
+removed a command outright, and changed how a field inside a section is addressed, all in
+patch releases. Which one you run is part of what was tested.
+
+Release channels lag far enough for that to bite. As of 2026-09-21, nixos-unstable has
+`pass-cli` 2.3.3, nixos-26.05 has 2.0.2 — below the 2.3 this app needs — and nixos-25.11 does
+not package it at all, so a `follows` there fails to evaluate.
+
+`pass-cli` itself is pinned on a separate `nixpkgs-pass-cli` input, so it survives a `follows`
+you add anyway. The rest of the closure does not. If you would rather share your own nixpkgs
+for everything, both parts are opt-in:
+
+```nix
+inputs.cosmic-pass.inputs.nixpkgs.follows = "nixpkgs";       # build against your nixpkgs
+# ... and, to drop the extra pinned input too:
+cosmic-pass-pkg = cosmic-pass.packages.${pkgs.stdenv.hostPlatform.system}.default.override {
+  proton-pass-cli = pkgs.proton-pass-cli;                    # must be 2.3 or newer
+};
+```
+
+The app reads `pass-cli --version` at startup and shows a warning line when it is older than
+the version that was tested. It is only a warning: the popup still opens and most fields still
+copy. It has to be a runtime check, because the package puts its `pass-cli` on `PATH` with
+`--suffix` — a `pass-cli` you installed yourself still wins, whatever the flake pins.
 
 The flake also exposes `overlays.default`, and `nix run github:ohaukeboe/cosmic-pass` runs it
 without installing anything.
