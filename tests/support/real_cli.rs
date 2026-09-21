@@ -19,6 +19,7 @@ use cosmic_pass::model::CliVersion;
 use cosmic_pass::pass::error::{Failure, PassError, classify};
 use cosmic_pass::pass::parse::parse_version;
 use cosmic_pass::pass::runner::TokioRunner;
+use sha2::{Digest, Sha256};
 
 /// Env var naming the binary under test. The same one `TokioRunner::from_env` reads, so the app
 /// and its tests can never disagree about which `pass-cli` is being exercised.
@@ -112,7 +113,7 @@ fn on_path(name: &str) -> Option<PathBuf> {
 /// Reads the version banner through the app's own parser, in a throwaway home so the probe
 /// cannot create anything in the developer's profile.
 fn probe_version(path: &Path) -> Result<CliVersion, String> {
-    let home = IsolatedEnv::new();
+    let home = IsolatedEnv::stateless();
     // Through `try_capture`, so the very first thing either suite runs already carries the
     // timeout every other probe does: a `pass-cli` that hangs on `--version` must fail
     // resolution, not wedge the test binary before a single test starts (FR-013).
@@ -188,26 +189,91 @@ impl RealCli {
 /// None of this is trusted: every contract probe asserts it ended up unauthenticated, which is
 /// what actually proves the isolation held.
 pub struct IsolatedEnv {
-    dir: tempfile::TempDir,
+    dir: PathBuf,
+    /// Kept alive so a stateless home is removed on drop. `None` for a labelled home, which is
+    /// meant to survive the run.
+    _temp: Option<tempfile::TempDir>,
 }
 
 impl IsolatedEnv {
-    pub fn new() -> Self {
+    /// A home at a path derived from `label`, wiped clean, and reused by every later run of the
+    /// same probe.
+    ///
+    /// The path is stable on purpose, and a random `tempfile::tempdir()` would be a bug. The
+    /// store `pass-cli` creates under `XDG_DATA_HOME` is encrypted with a key it keeps in the
+    /// kernel keyring under `keyring:cli-local-key:<sha256 of the store path>@ProtonPassCLI`,
+    /// and that key is `perm`: it lives in the per-uid persistent keyring, which no `HOME`
+    /// override touches and which `logout --force` does not clear. A fresh random path every
+    /// run therefore meant a fresh permanent key every run -- six per suite run, against a
+    /// 200-key, 20000-byte quota shared with everything else the developer runs. It filled, and
+    /// every probe then failed with `Error accessing keyring: Platform failure: QuotaExceeded`.
+    ///
+    /// A stable path makes the description stable, so the key is created once and reused
+    /// forever after. Wiping the directory does not orphan it: the key is addressed by path,
+    /// not by content, so the next run finds it again (asserted in
+    /// `isolation::a_probe_reuses_one_kernel_key`).
+    ///
+    /// `label` must be unique per test. Two tests sharing one would share a directory, and
+    /// nextest runs them concurrently.
+    pub fn new(label: &str) -> Self {
+        let dir = probe_home_root().join(label);
+        // Wiped rather than merely created: a probe must not inherit whatever the last run
+        // left, which is what a `TempDir` used to give for free.
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir)
+            .unwrap_or_else(|e| panic!("creating the probe home {}: {e}", dir.display()));
+        Self { dir, _temp: None }
+    }
+
+    /// A throwaway home for a probe that runs only `--help` or `--version`.
+    ///
+    /// Those two touch neither the store nor the keyring -- measured on 2.3.3: zero files
+    /// written, zero keys created, which `isolation::help_and_version_touch_no_store` asserts
+    /// -- so they need no stable path, and a random one keeps them from contending for a
+    /// directory with the many test processes nextest runs at once.
+    pub fn stateless() -> Self {
+        let temp = tempfile::tempdir().expect("a temp dir");
         Self {
-            dir: tempfile::tempdir().expect("a temp dir"),
+            dir: temp.path().to_owned(),
+            _temp: Some(temp),
         }
     }
 
     pub fn path(&self) -> &Path {
-        self.dir.path()
+        &self.dir
+    }
+
+    /// The store whose path `pass-cli` hashes into its kernel-keyring key description.
+    fn store(&self) -> PathBuf {
+        self.dir.join("share/proton-pass-cli/.session")
+    }
+
+    /// The description `pass-cli` gives this home's kernel-keyring key.
+    ///
+    /// Reproduced rather than observed, so a probe can name its own key exactly instead of
+    /// diffing `/proc/keys` against whatever a concurrent test is doing. Verified against 2.3.3.
+    pub fn kernel_key_description(&self) -> String {
+        let digest = Sha256::digest(self.store().display().to_string().as_bytes());
+        format!("keyring:cli-local-key:{digest:x}@ProtonPassCLI")
+    }
+
+    /// How many kernel keys carry this home's description. The guarantee is that it never
+    /// exceeds one, however often the suite runs.
+    ///
+    /// `/proc/keys` lists every key owned by this user; `None` means the kernel does not expose
+    /// it, which is the only case where the count cannot be checked.
+    pub fn kernel_keys_for_this_home(&self) -> Option<usize> {
+        let keys = std::fs::read_to_string("/proc/keys").ok()?;
+        let wanted = self.kernel_key_description();
+        Some(keys.lines().filter(|l| l.contains(&wanted)).count())
     }
 
     /// Environment for a child process. Applied *after* the three variables `TokioRunner` sets
     /// itself, so the keyring override here wins.
     pub fn vars(&self) -> Vec<(String, String)> {
-        let at = |name: &str| self.dir.path().join(name).display().to_string();
+        let at = |name: &str| self.dir.join(name).display().to_string();
         vec![
-            ("HOME".into(), self.dir.path().display().to_string()),
+            ("HOME".into(), self.dir.display().to_string()),
             ("XDG_DATA_HOME".into(), at("share")),
             ("XDG_CONFIG_HOME".into(), at("config")),
             ("XDG_STATE_HOME".into(), at("state")),
@@ -241,16 +307,22 @@ impl IsolatedEnv {
     /// anywhere else.
     pub fn files_written(&self) -> Vec<PathBuf> {
         let mut found = Vec::new();
-        walk(self.dir.path(), self.dir.path(), &mut found);
+        walk(&self.dir, &self.dir, &mut found);
         found.sort();
         found
     }
 }
 
-impl Default for IsolatedEnv {
-    fn default() -> Self {
-        Self::new()
-    }
+/// Where probe homes live: inside the build directory, never the developer's profile.
+///
+/// Wiped by `cargo clean` like anything else under `target/`. Losing them costs nothing -- the
+/// keyring keys are addressed by path, so recreating a home finds its key again.
+fn probe_home_root() -> PathBuf {
+    let target = std::env::var_os("CARGO_TARGET_DIR").map_or_else(
+        || Path::new(env!("CARGO_MANIFEST_DIR")).join("target"),
+        PathBuf::from,
+    );
+    target.join("pass-cli-probe-homes")
 }
 
 fn walk(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) {

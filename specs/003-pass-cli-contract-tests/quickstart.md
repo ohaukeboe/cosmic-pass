@@ -175,6 +175,34 @@ appears -- the last one is what separates "killed" from "abandoned" (FR-013).
 To see it fail, delete the `child.kill()` call in `RawOutput::try_capture` and re-run: the marker
 assertion goes red with `the child outlived the probe that spawned it`.
 
+## V12. A probe reuses its kernel-keyring key instead of minting one
+
+```bash
+before=$(grep -c '@ProtonPassCLI' /proc/keys)
+cargo nextest run -E 'binary(pass_cli_contract)'
+echo "$before -> $(grep -c '@ProtonPassCLI' /proc/keys)"
+```
+
+**Expect**: the two counts are equal on every run after the first, and `grep '^ 1000' /proc/key-users`
+stays flat. The first run on a fresh checkout creates seven keys -- one per probe home -- and
+every run after that reuses them.
+
+`pass-cli` encrypts its store with a key it keeps in the *persistent* kernel keyring, addressed
+by the hash of the store path and marked `perm`. That keyring is per-uid, so no `HOME` override
+reaches it, and `logout --force` does not clear it. Random homes therefore leaked six permanent
+keys a run against a 200-key, 20000-byte per-user quota; when it filled, every probe failed with
+`Error accessing keyring: Platform failure: QuotaExceeded`. Stable homes make the key repeat.
+
+To see it fail, make `IsolatedEnv::new` return `Self::stateless()` and re-run
+`keyring::a_probe_reuses_one_kernel_key`: it goes red with `a labelled home must land on the
+same path every run`.
+
+If a keyring ever does fill, the leaked keys are removable and nothing else is in that keyring:
+
+```bash
+keyctl unlink <id> $(keyctl get_persistent @s)   # for each id in `keyctl show` matching @ProtonPassCLI
+```
+
 ---
 
 ## Recorded outcomes
@@ -185,18 +213,19 @@ comparison.
 
 | Item | Outcome |
 |---|---|
-| V1 contract suite in the dev shell | pass -- 21 contract tests, 371 in the whole `just test` run, no `SKIP` line |
+| V1 contract suite in the dev shell | pass -- 23 contract tests, 373 in the whole `just test` run, no `SKIP` line |
 | V2 contributor without `pass-cli` | pass -- green with `SKIP pass_cli_contract: no pass-cli on PATH and COSMIC_PASS_CLI unset` |
 | V3 missing binary marked required | pass -- red, naming `COSMIC_PASS_CLI=/nonexistent/pass-cli, and COSMIC_PASS_REQUIRE_CLI=1 marks it required` |
 | V4 SC-002 mutations | pass -- exactly one assertion red per mutation (see below) |
-| V5 developer session untouched | **partial** -- still signed in after a full contract run, and no fixture or tracked file changed, but the probes do leave state outside their temp homes: six permanent keys per run in the *shared* kernel keyring, which is per-uid and not covered by a `HOME` override. See T057 |
+| V5 developer session untouched | pass -- still signed in after a full contract run; no fixture or tracked file changed; and repeated runs leave the kernel-keyring key count unchanged, which T057 fixed and `keyring::a_probe_reuses_one_kernel_key` now holds |
 | V6 live suite | pass on the pre-Phase-7 suite -- 11 tests, ~57 s, every scenario `covered`; 2 vaults, 572 items, 2 TOTP fields. **Not re-run since**: the session is locked, so `live()` stops at `pass-cli is not usable: the Proton Pass session is locked`. The `fixtures compared:` count and the `SCENARIO fixture-shape-share-2` line are therefore unobserved (cosmic-pass-5kr) |
 | V7 live suite with no session | **not run** -- it would have meant logging the developer out; the preflight path is `live()` in `tests/pass_cli_live.rs`, which panics with `not signed in; run: pass-cli login` |
 | V8 fixture drift | pass -- both directions: a fixture-only path fails red, a fresh-only path is reported and passes |
 | V9 coverage table review | pass -- every clause of the consumed contract appears once, as contract / live / already covered / manual |
-| V10 budget | pass -- contract suite 2.417 s, of which 2.4 s is V11's deliberate sleep; the other twenty probes run in 0.189 s. Far inside the 30 s target |
+| V10 budget | pass -- contract suite 2.412 s, of which 2.4 s is V11's deliberate sleep; the other twenty-two probes run in 0.665 s. Far inside the 30 s target |
 | V11 hung probe killed | pass -- green in 2.409 s; removing `child.kill()` turns the marker assertion red, as documented above |
-| `just check` (whole gate) | pass -- 371 tests, line coverage 94.33% of 5981 lines |
+| V12 keyring key reuse | pass -- three consecutive whole-suite runs left the `@ProtonPassCLI` key count unchanged; before T057 each run added six |
+| `just check` (whole gate) | pass -- 373 tests, line coverage 94.33% of 5981 lines |
 
 ### V4 detail
 

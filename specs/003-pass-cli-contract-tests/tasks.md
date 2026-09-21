@@ -552,7 +552,7 @@ fixtures are compared against the second vault. One record is now stale.
       `SCENARIO fixture-shape-share-2` line reported `covered` — the 2026-09-21 run saw 2 vaults,
       so it should. Leave V4, V5, V8 and V9 as recorded; Phase 7 touched none of what they
       assert.
-- [ ] T057 Stop contract probes from leaking a permanent kernel-keyring key, per FR-012 and
+- [X] T057 Stop contract probes from leaking a permanent kernel-keyring key, per FR-012 and
       harness-contract guarantee 2 (`contradicts`). Found while running T056.
 
       **Measured**: each contract-suite run leaves six `user`-type keys named
@@ -594,3 +594,31 @@ fixtures are compared against the second vault. One record is now stale.
       Whatever is chosen, add the guarantee to `contracts/pass-cli-test-harness.md` and assert it:
       a probe must leave the kernel keyring as it found it, checked by the exact description
       above rather than by a count.
+
+### T057 resolution (2026-09-21)
+
+None of the three candidates was taken. `unsafe_code = "forbid"` in `Cargo.toml` rules out the
+`libc::syscall(SYS_keyctl, ...)` teardown outright, and measuring two things made a smaller fix
+obvious:
+
+1. `--version` and `--help` create no key and write no file, so only the six probes that run a
+   real subcommand ever took one.
+2. A store at a path that already has a key **reuses** it, even after the home is wiped — the
+   description follows the path, not the contents.
+
+So `IsolatedEnv::new(label)` now puts the home at `target/pass-cli-probe-homes/<label>` and
+wipes it, instead of taking a random `TempDir`. The description repeats, so each probe's key is
+created once on a fresh checkout and reused for ever after: measured at zero growth across
+three consecutive whole-suite runs, against six per run before. `IsolatedEnv::stateless()` keeps
+a `TempDir` for the `--help` and `--version` probes, and `keyring::help_and_version_touch_no_store`
+asserts that is safe rather than assuming it.
+
+`sha2` became a dev-dependency so the test can reproduce the key description from the store path
+and name its own key, instead of diffing `/proc/keys` against whatever a concurrent test is
+doing. It was already in `Cargo.lock` as a transitive dependency, so the build graph is
+unchanged. This is the deviation from plan.md's "no new crate"; it buys a race-free assertion.
+
+`keyring::a_probe_reuses_one_kernel_key` holds the guarantee. Its load-bearing assertion is that
+two `IsolatedEnv`s with the same label land on the same path — asserting only "this home has one
+key" passed just as well with random paths, which was the bug, and that weaker version was
+written and observed to pass before being tightened.

@@ -42,7 +42,7 @@ mod isolation {
     #[tokio::test]
     async fn probe_is_unauthenticated() {
         let Some(cli) = or_skip() else { return };
-        let home = IsolatedEnv::new();
+        let home = IsolatedEnv::new("isolation-unauthenticated");
         let result = home
             .runner(cli)
             .run(
@@ -60,7 +60,7 @@ mod isolation {
     #[tokio::test]
     async fn probe_writes_only_inside_its_own_home() {
         let Some(cli) = or_skip() else { return };
-        let home = IsolatedEnv::new();
+        let home = IsolatedEnv::new("isolation-writes");
         let _ = home
             .runner(cli)
             .run(
@@ -83,6 +83,93 @@ mod isolation {
             stray.is_empty(),
             "pass-cli wrote outside its own store inside the isolated home: {stray:?}"
         );
+    }
+}
+
+/// Guarantees 4 and 5: a probe must not accumulate state in the kernel keyring, which is
+/// per-uid and so is the one place `IsolatedEnv`'s directory overrides cannot reach.
+mod keyring {
+    use super::*;
+
+    /// `pass-cli` encrypts its local store with a key it keeps in the persistent kernel
+    /// keyring, addressed by the hash of the store path and marked `perm`. A random home per
+    /// run therefore meant a new permanent key per run against a 200-key per-user quota, until
+    /// every probe failed with `Error accessing keyring: Platform failure: QuotaExceeded`.
+    ///
+    /// A stable home makes the key reusable. This asserts both halves: that the description is
+    /// the one the binary actually uses, and that wiping the home and running again finds the
+    /// same key rather than minting a second.
+    #[tokio::test]
+    async fn a_probe_reuses_one_kernel_key() {
+        let Some(cli) = or_skip() else { return };
+
+        let probe = async |home: &IsolatedEnv| {
+            let _ = home
+                .runner(cli)
+                .run(
+                    args(&["info", "--output", "json"]),
+                    PROBE_TIMEOUT,
+                    CancellationToken::new(),
+                )
+                .await;
+        };
+
+        let home = IsolatedEnv::new("keyring-reuse");
+        probe(&home).await;
+        let Some(after_first) = home.kernel_keys_for_this_home() else {
+            eprintln!(
+                "SKIP pass_cli_contract: /proc/keys is unreadable, so key reuse is unchecked"
+            );
+            return;
+        };
+        assert_eq!(
+            after_first,
+            1,
+            "the computed description does not match the key pass-cli created, so this test is              watching the wrong key: {}",
+            home.kernel_key_description()
+        );
+
+        // A second `IsolatedEnv` with the same label is what the next run of the suite does:
+        // the directory is wiped, the path is not. Identity of the path is the whole guarantee
+        // -- it is what makes the key description repeat, and a description that repeats is a
+        // key reused rather than minted. Asserting only "this home has one key" would pass just
+        // as well with a random path per run, which is the bug.
+        let again = IsolatedEnv::new("keyring-reuse");
+        assert_eq!(
+            home.path(),
+            again.path(),
+            "a labelled home must land on the same path every run; a fresh path mints a fresh \
+             permanent key, and at six a run against a 200-key quota the suite goes red after \
+             about thirty runs"
+        );
+        assert_eq!(
+            home.kernel_key_description(),
+            again.kernel_key_description(),
+            "same path, different key description -- the description no longer follows the path"
+        );
+
+        probe(&again).await;
+        assert_eq!(
+            again.kernel_keys_for_this_home(),
+            Some(1),
+            "the second run left more than one key on the same description"
+        );
+    }
+
+    /// Why `IsolatedEnv::stateless()` is allowed to use a random path: these two create no key
+    /// to leak. If upstream ever changes that, the random homes start leaking silently, so the
+    /// claim is asserted rather than assumed.
+    #[test]
+    fn help_and_version_touch_no_store() {
+        let Some(cli) = or_skip() else { return };
+        for argv in [vec!["--version"], vec!["item", "list", "--help"]] {
+            let home = IsolatedEnv::stateless();
+            home.raw(cli, &argv);
+            assert!(
+                home.files_written().is_empty(),
+                "{argv:?} wrote inside its home, so it may also have taken a keyring key and                  must use a labelled home instead of a stateless one"
+            );
+        }
     }
 }
 
@@ -115,8 +202,10 @@ mod version {
 mod surface {
     use super::*;
 
+    /// A throwaway home: `--help` writes nothing and creates no keyring key, so this probe
+    /// needs no stable path.
     fn help(cli: &RealCli, subcommand: &[&str]) -> support::real_cli::RawOutput {
-        let home = IsolatedEnv::new();
+        let home = IsolatedEnv::stateless();
         let mut argv = subcommand.to_vec();
         argv.push("--help");
         home.raw(cli, &argv)
@@ -201,7 +290,7 @@ mod argv {
     #[tokio::test]
     async fn every_command_the_app_builds_is_accepted() {
         let Some(cli) = or_skip() else { return };
-        let home = IsolatedEnv::new();
+        let home = IsolatedEnv::new("argv-every-command");
         let runner = home.runner(cli);
         for (clause, argv) in every_command() {
             let result = runner
@@ -215,7 +304,7 @@ mod argv {
     #[tokio::test]
     async fn the_version_command_the_app_builds_answers() {
         let Some(cli) = or_skip() else { return };
-        let home = IsolatedEnv::new();
+        let home = IsolatedEnv::stateless();
         let out = home
             .runner(cli)
             .run(app::version(), PROBE_TIMEOUT, CancellationToken::new())
@@ -233,7 +322,7 @@ mod argv {
     #[test]
     fn ids_must_use_the_equals_form() {
         let Some(cli) = or_skip() else { return };
-        let home = IsolatedEnv::new();
+        let home = IsolatedEnv::new("argv-equals-form");
 
         assert!(
             app::item_list("-leadingdash").contains(&"--share-id=-leadingdash".to_owned()),
@@ -292,7 +381,7 @@ mod classify {
     #[test]
     fn unauthenticated_stderr_is_signed_out() {
         let Some(cli) = or_skip() else { return };
-        let home = IsolatedEnv::new();
+        let home = IsolatedEnv::new("classify-signed-out");
         for argv in [
             vec!["info", "--output", "json"],
             vec!["vault", "list", "--output", "json"],
@@ -320,7 +409,7 @@ mod env {
     #[test]
     fn stdout_carries_payload_only() {
         let Some(cli) = or_skip() else { return };
-        let home = IsolatedEnv::new();
+        let home = IsolatedEnv::new("env-stdout");
 
         let version = home.raw(cli, &["--version"]);
         assert_eq!(version.status, Some(0));

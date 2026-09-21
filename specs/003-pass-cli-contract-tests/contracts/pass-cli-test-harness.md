@@ -41,6 +41,17 @@ in `just check` output.
 
 ## Isolation contract (contract suite only)
 
+A probe's home is **stable, not random**. `IsolatedEnv::new(label)` puts it at
+`target/pass-cli-probe-homes/<label>` and wipes it; only `IsolatedEnv::stateless()`, for probes
+that run just `--help` or `--version`, uses a `TempDir`. The reason is the keyring, not the
+filesystem: `pass-cli` encrypts its store with a key it keeps in the **persistent** kernel
+keyring under `keyring:cli-local-key:<sha256 of the store path>@ProtonPassCLI`, marked `perm`.
+That keyring is per-uid, so no `HOME` override reaches it, and `logout --force` does not clear
+it. With a random path per run the suite minted six permanent keys every run against a 200-key,
+20000-byte quota shared with everything else the developer runs; it filled, and every probe then
+failed with `Error accessing keyring: Platform failure: QuotaExceeded`. A stable path makes the
+description repeat, so each probe's key is created once and reused for ever after.
+
 Every contract probe runs with:
 
 - `HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME` inside a
@@ -57,8 +68,16 @@ Guarantees, each asserted rather than assumed:
    fails and says so.
 2. Everything written lands inside the probe's own home. Measured on 2.3.3: the only file
    created is `$XDG_DATA_HOME/proton-pass-cli/.session/pass-cli.db`. A probe that wrote
-   somewhere else would have ignored the overrides, which is what the assertion catches.
+   somewhere else would have ignored the overrides, which is what the assertion catches. The
+   one thing a probe leaves outside its home is its kernel-keyring key, which guarantee 5
+   bounds.
 3. The developer's `pass-cli` session survives a full contract run unchanged.
+5. A probe's kernel-keyring key is created once and reused, never accumulated. Asserted by
+   `keyring::a_probe_reuses_one_kernel_key`, which reproduces the description from the store
+   path and checks that a second `IsolatedEnv` with the same label lands on the same path and
+   the same description; and by `keyring::help_and_version_touch_no_store`, which is why
+   `stateless()` is allowed a random path. Repeated whole-suite runs were measured to leave the
+   key count unchanged.
 4. No probe outlives its deadline. Probes that go through `TokioRunner` carry the app's own
    timeout; the raw probes -- the ones that need the exit status and stderr the runner hides --
    go through `RawOutput::try_capture`, which kills the child once `PROBE_TIMEOUT` (10 s) has
@@ -93,6 +112,7 @@ This table is the mechanism behind SC-001 and must be kept in sync when a clause
 | stdin null; stdout/stderr piped | already covered | `pass_cli_integration.rs::runner::sets_quiet_env_and_null_stdin` |
 | Own process group, killed on drop/timeout/cancel | already covered | `pass_cli_integration.rs::runner::{timeout,cancel,dropping}_kills_the_process` |
 | Per-command timeouts | already covered | `pass_cli_integration.rs::runner` |
+| A probe leaves no new keyring key behind | contract | `keyring::a_probe_reuses_one_kernel_key`, `keyring::help_and_version_touch_no_store` |
 | A probe that hangs is killed, not waited on | contract | `timeout::a_hung_probe_is_killed_rather_than_waited_on` -- a stand-in that outlives its deadline on purpose; the real binary cannot be made to hang on demand |
 | At most 4 processes at once | already covered | `pass_cli_integration.rs::runner::runs_at_most_four_processes_at_once` |
 | Secrets never in argv | contract + live | argv comes from `backend::argv`, which takes ids and field names only |
@@ -118,9 +138,9 @@ This table is the mechanism behind SC-001 and must be kept in sync when a clause
 | Latency figures | reported, not asserted | `latency_is_reported` |
 | Captured fixtures resemble real output | live | `committed_fixtures_still_match_reality` |
 
-Measured on 2026-09-21 against 2.3.3: the contract suite is 21 tests in 2.4 s -- all of it the
-deliberate 2 s sleep in `timeout::a_hung_probe_is_killed_rather_than_waited_on`, the other twenty
-finishing in 0.66 s; the live suite is 11 tests in about 57 s and reported every scenario
+Measured on 2026-09-21 against 2.3.3: the contract suite is 23 tests in 2.4 s -- all of it the
+deliberate 2 s sleep in `timeout::a_hung_probe_is_killed_rather_than_waited_on`, the other twenty-two
+finishing in about 1 s; the live suite is 11 tests in about 57 s and reported every scenario
 `covered`. The `fixture-shape-share-2` scenario postdates that run and has not yet been observed
 against an unlocked session.
 
