@@ -8,6 +8,11 @@
 # Exit codes: 0 = every step ran and nothing leaked; 1 = a fixture secret was found;
 # 2 = a step could not run, so the scan proves nothing about it.
 #
+# The live pass-cli suite is scanned differently: a real account's secrets carry no marker, so
+# a marker grep would prove nothing about them. Instead its output is checked against the fixed
+# vocabulary it is allowed to print. Set COSMIC_PASS_LIVE=1 to include that step; it needs a
+# signed-in pass-cli and is read-only.
+#
 # The app run uses the real keyring so that an encrypted cache is actually written and
 # scanned; it creates or reuses the app's own "COSMIC Pass cache key" item and writes the
 # cache into a temporary directory. Export COSMIC_PASS_NO_KEYRING=1 beforehand to opt out —
@@ -50,6 +55,29 @@ else
     if ! find "$COSMIC_PASS_CACHE_DIR" -type f -print -quit 2>/dev/null | grep -q .; then
         skipped+=("encrypted cache: no cache file was written (keyring locked, or the run ended before the 2 s debounce)")
     fi
+fi
+
+echo "==> live pass-cli suite"
+if [ "${COSMIC_PASS_LIVE:-}" != 1 ]; then
+    skipped+=("live pass-cli suite: set COSMIC_PASS_LIVE=1 and sign in to include it")
+else
+    # Read-only, and never scanned for markers: see the note at the top.
+    COSMIC_PASS_LIVE=1 cargo nextest run --all-features --no-tests=pass \
+        --run-ignored=only -E 'binary(pass_cli_live)' --no-capture \
+        >"$work/live.log" 2>&1
+    # Every line the suite prints itself must match one of these. Anything else is output
+    # nobody vetted, which is where a secret would appear.
+    allowed='^(SCENARIO |LATENCY |FIXTURE |vaults: |items: |plain items in the first vault: |totp fields: |fixtures compared: |pass-cli under test: |SKIP )'
+    # nextest's own frames, cargo's progress, and blank lines.
+    noise='^( *(PASS|FAIL|START|SKIP|Summary|Nextest|Starting|Compiling|Finished|running|test |test result:|---|────)|$)'
+    if unvetted=$(grep -vE "$allowed" "$work/live.log" | grep -vE "$noise"); then
+        echo "LEAK: the live suite printed lines outside its allowed vocabulary:" >&2
+        printf '%s\n' "$unvetted" | head -20 >&2
+        exit 1
+    fi
+    # The log is deleted rather than scanned: it holds no markers by construction, and keeping
+    # it would put real account output in the directory the marker grep below prints.
+    rm -f "$work/live.log"
 fi
 
 echo "==> scanning"

@@ -14,6 +14,13 @@ lint:
 test:
     cargo nextest run --all-features --no-tests=pass
 
+# Drive a real, signed-in `pass-cli` (read-only). Needs `pass-cli login` first; never part of
+# `check`, because it needs credentials and a network. `--no-capture` so the per-scenario
+# coverage lines and latency figures reach the terminal.
+test-live:
+    COSMIC_PASS_LIVE=1 cargo nextest run --all-features --no-tests=pass \
+        --run-ignored=only -E 'binary(pass_cli_live)' --no-capture
+
 # Run tests with coverage; fails below 80% line coverage (skipped while no lines are coverable).
 # Excluded: the binary entry point and the libcosmic window/view glue, which need a live
 # compositor and are covered by the manual quickstart checks (plan.md, Complexity Tracking #1).

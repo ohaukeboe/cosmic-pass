@@ -163,9 +163,18 @@
               wl-clipboard
               mesa
             ])
+            ++ [
+              # The same pinned build the package wraps, so `tests/pass_cli_contract.rs`
+              # exercises the `pass-cli` this project actually ships against. `pkgs`'s own
+              # would be a different version -- see the note on the input above.
+              nixpkgs-pass-cli.legacyPackages.${systemOf pkgs}.proton-pass-cli
+            ]
             ++ runtimeLibs pkgs;
 
           RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
+          # Inside this shell `pass-cli` is guaranteed, so its absence is a broken flake rather
+          # than a contributor without Nix: fail the contract suite instead of skipping it.
+          COSMIC_PASS_REQUIRE_CLI = "1";
           # cargo-llvm-cov needs llvm tools matching rustc's LLVM version.
           LLVM_COV = "${pkgs.rustc.llvmPackages.llvm}/bin/llvm-cov";
           LLVM_PROFDATA = "${pkgs.rustc.llvmPackages.llvm}/bin/llvm-profdata";
