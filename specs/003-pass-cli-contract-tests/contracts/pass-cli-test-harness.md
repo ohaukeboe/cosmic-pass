@@ -59,6 +59,12 @@ Guarantees, each asserted rather than assumed:
    created is `$XDG_DATA_HOME/proton-pass-cli/.session/pass-cli.db`. A probe that wrote
    somewhere else would have ignored the overrides, which is what the assertion catches.
 3. The developer's `pass-cli` session survives a full contract run unchanged.
+4. No probe outlives its deadline. Probes that go through `TokioRunner` carry the app's own
+   timeout; the raw probes -- the ones that need the exit status and stderr the runner hides --
+   go through `RawOutput::try_capture`, which kills the child once `PROBE_TIMEOUT` (10 s) has
+   passed and reports the timeout as a failure. Version resolution takes the same path, so a
+   `pass-cli` that hangs on `--version` fails resolution rather than wedging the binary before
+   a test has started.
 
 ## Safety contract (live suite only)
 
@@ -87,6 +93,7 @@ This table is the mechanism behind SC-001 and must be kept in sync when a clause
 | stdin null; stdout/stderr piped | already covered | `pass_cli_integration.rs::runner::sets_quiet_env_and_null_stdin` |
 | Own process group, killed on drop/timeout/cancel | already covered | `pass_cli_integration.rs::runner::{timeout,cancel,dropping}_kills_the_process` |
 | Per-command timeouts | already covered | `pass_cli_integration.rs::runner` |
+| A probe that hangs is killed, not waited on | contract | `timeout::a_hung_probe_is_killed_rather_than_waited_on` -- a stand-in that outlives its deadline on purpose; the real binary cannot be made to hang on demand |
 | At most 4 processes at once | already covered | `pass_cli_integration.rs::runner::runs_at_most_four_processes_at_once` |
 | Secrets never in argv | contract + live | argv comes from `backend::argv`, which takes ids and field names only |
 | IDs must be `--flag=VALUE`; space form fails | contract | `argv::ids_must_use_the_equals_form` |
@@ -111,14 +118,23 @@ This table is the mechanism behind SC-001 and must be kept in sync when a clause
 | Latency figures | reported, not asserted | `latency_is_reported` |
 | Captured fixtures resemble real output | live | `committed_fixtures_still_match_reality` |
 
-Measured on 2026-09-21 against 2.3.3: the contract suite is 20 tests in 0.66 s; the live suite
-is 11 tests in about 57 s and reported every scenario `covered`.
+Measured on 2026-09-21 against 2.3.3: the contract suite is 21 tests in 2.4 s -- all of it the
+deliberate 2 s sleep in `timeout::a_hung_probe_is_killed_rather_than_waited_on`, the other twenty
+finishing in 0.66 s; the live suite is 11 tests in about 57 s and reported every scenario
+`covered`. The `fixture-shape-share-2` scenario postdates that run and has not yet been observed
+against an unlocked session.
 
 **Known limit of the fixture-shape check.** `scripts/capture-fixtures.sh` keeps a sample of
 items, so which optional sub-objects a fixture carries depends on which items were sampled. A
 key path present in fresh output but missing from the fixture is therefore usually sampling
 chance, not upstream drift -- which is why an added path is only reported, and only a *removed*
-path fails. The 2026-09-21 run reported 31 added paths against `item-list-share-1.json`
+path fails.
+
+**Per-vault fixtures.** `item-list-share-1.json` and `item-list-plain-share-1.json` are compared
+against the first vault in `vault list`, the `-share-2` pair against the second. Both fixture and
+fresh output are per-vault, so pairing them any other way would compare two unrelated samples. An
+account with a single vault therefore leaves the `-share-2` pair unchecked; that is reported as
+`SCENARIO fixture-shape-share-2: not covered: ...` rather than passing silently (FR-017). The 2026-09-21 run reported 31 added paths against `item-list-share-1.json`
 (`Login.passkeys[]`, `content.platform_specific`, `extra_fields[].content.Totp`,
 `Custom.sections[].section_fields[].content.Text`) and no removals.
 

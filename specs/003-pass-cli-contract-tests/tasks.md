@@ -470,3 +470,64 @@ Four things ended up different from the plan. Each is deliberate.
   `tests/pass_cli_live.rs`, which panics with `not signed in; run: pass-cli login`.
 - **`Locked`, `Network` and `LocalData` classification** remain manual, as planned — each needs
   an induced failure the suites cannot produce. They are listed as manual in the coverage table.
+
+---
+
+## Phase 7: Convergence
+
+Appended by `/speckit-converge` on 2026-09-21 after assessing the implemented tree against
+`spec.md`, `plan.md` and this file. Two gaps remain; neither is a constitution violation.
+
+- [X] T054 Give every raw probe a timeout that kills the child, per FR-013 and research.md D10
+      (`partial`). `RawOutput::capture` in `tests/support/real_cli.rs` and `probe_version` in the
+      same file both call blocking `std::process::Command::output()`, which waits forever. Eight
+      contract probes run through `capture` — the six `surface::*` `--help` probes,
+      `argv::ids_must_use_the_equals_form` and `env::stdout_carries_payload_only` — so a
+      `pass-cli` that hangs wedges the test binary instead of failing it, which is the spec's
+      "A contract probe hangs" edge case. D10 fixed the figure: a flat 10 s for `--help`-style
+      probes. Keep `RawOutput` synchronous if that reads better (spawn, wait with a deadline,
+      `kill` on expiry), or move it onto `TokioRunner`'s path; either way the child must be
+      terminated, not merely abandoned. RED-FIRST: point a probe at a script that sleeps past
+      the deadline and confirm the suite fails with a timeout message before wiring the real
+      binary back in.
+- [X] T055 Shape-check the two share-2 fixtures, per FR-019 and US3/AC1 (`partial`).
+      `committed_fixtures_still_match_reality` in `tests/pass_cli_live.rs` compares `info.json`,
+      `vault-list.json`, `item-list-share-1.json` and `item-list-plain-share-1.json` only;
+      `item-list-share-2.json` and `item-list-plain-share-2.json` — both named in T044 — are
+      compared against nothing, so they can go stale unobserved while `just test-live` stays
+      green. Compare them against the second vault in `vault list` output, reusing `compare` and
+      `drop_absent_kinds`. An account with only one vault has no second listing to compare
+      against: report `LiveScenario::not_covered("fixture-shape-share-2", ...)` with that reason
+      (FR-017) rather than skipping silently. Update the `fixtures compared: N` line and the
+      "Known limit of the fixture-shape check" note in
+      `contracts/pass-cli-test-harness.md` if the count or the caveat changes.
+
+## Convergence notes (2026-09-21)
+
+T054 and T055 close the two gaps `/speckit-converge` found.
+
+1. **`RawOutput::try_capture` replaces `Command::output`** (T054). The raw probes — the six
+   `--help` probes, `ids_must_use_the_equals_form`, `stdout_carries_payload_only` and version
+   resolution — waited forever, so a hung `pass-cli` would have wedged the test binary rather
+   than failing it, against FR-013 and research.md D10. `try_capture` drains both pipes on their
+   own threads (a child blocked writing to a full pipe looks exactly like a hang), polls
+   `try_wait` until `PROBE_TIMEOUT`, then kills and reaps.
+   `timeout::a_hung_probe_is_killed_rather_than_waited_on` asserts it against a
+   `sh -c 'sleep 2; : > marker'` stand-in: the error text, the elapsed time, and — the assertion
+   that matters — that the marker never appears. RED confirmed by removing the `kill` call,
+   which makes exactly that assertion fail with `the child outlived the probe that spawned it`.
+
+2. **The `-share-2` fixtures are compared against the second vault** (T055). Both fixture and
+   fresh output are per-vault, so the first vault's listing could never have checked them. An
+   account with one vault reports
+   `SCENARIO fixture-shape-share-2: not covered: the account has one vault, ...` rather than
+   passing silently.
+
+### Not verified (convergence)
+
+- **T055's live behaviour.** `just test-live` could not run on 2026-09-21: the developer's
+  session was *locked*, not signed out, so `live()` panicked with
+  `pass-cli is not usable: the Proton Pass session is locked` before any scenario ran. Unlocking
+  needs the account passphrase. The code compiles and passes `clippy -D warnings`; the
+  `fixtures compared: 6` count and the `fixture-shape-share-2` line have not been observed.
+  Run `just test-live` after unlocking the session to close this out.

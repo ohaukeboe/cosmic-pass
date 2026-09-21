@@ -7,10 +7,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use cosmic_pass::core::version::TESTED_MIN;
 use cosmic_pass::model::CliVersion;
@@ -111,20 +113,18 @@ fn on_path(name: &str) -> Option<PathBuf> {
 /// cannot create anything in the developer's profile.
 fn probe_version(path: &Path) -> Result<CliVersion, String> {
     let home = IsolatedEnv::new();
-    let out = std::process::Command::new(path)
-        .arg("--version")
-        .envs(home.vars())
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|e| format!("could not run {}: {e}", path.display()))?;
-    if !out.status.success() {
+    // Through `try_capture`, so the very first thing either suite runs already carries the
+    // timeout every other probe does: a `pass-cli` that hangs on `--version` must fail
+    // resolution, not wedge the test binary before a single test starts (FR-013).
+    let out = RawOutput::try_capture(path, &["--version"], home.vars(), PROBE_TIMEOUT)?;
+    if out.status != Some(0) {
         return Err(format!(
-            "{} --version exited with {}",
+            "{} --version exited with {:?}",
             path.display(),
             out.status
         ));
     }
-    parse_version(&out.stdout)
+    parse_version(out.stdout.as_bytes())
         .map_err(|_| format!("{} --version printed no parseable version", path.display()))
 }
 
@@ -284,7 +284,25 @@ pub struct RawOutput {
 
 impl RawOutput {
     fn capture(bin: &Path, args: &[&str], env: Vec<(String, String)>) -> Self {
-        let out = std::process::Command::new(bin)
+        Self::try_capture(bin, args, env, PROBE_TIMEOUT).unwrap_or_else(|reason| panic!("{reason}"))
+    }
+
+    /// Runs the binary to completion, or kills it once `timeout` has passed.
+    ///
+    /// `std::process::Command::output` waits forever, which would let a hung `pass-cli` wedge
+    /// the whole test binary rather than fail it (FR-013, research.md D10). Probes that go
+    /// through `TokioRunner` already carry the app's own timeout; this is the same guarantee
+    /// for the probes that need the exit status and stderr the runner hides.
+    ///
+    /// Returns the reason as an `Err` rather than panicking so `probe_version` can turn it
+    /// into a `Resolution::Fail` instead of an unwind out of a `OnceLock` initialiser.
+    pub fn try_capture(
+        bin: &Path,
+        args: &[&str],
+        env: Vec<(String, String)>,
+        timeout: Duration,
+    ) -> Result<Self, String> {
+        let mut child = std::process::Command::new(bin)
             .args(args)
             // The same three the production runner sets, so a raw probe and a runner probe
             // differ only in what they capture.
@@ -293,13 +311,45 @@ impl RawOutput {
             .env("PROTON_PASS_LINUX_KEYRING", "dbus")
             .envs(env)
             .stdin(Stdio::null())
-            .output()
-            .unwrap_or_else(|e| panic!("could not run {} {args:?}: {e}", bin.display()));
-        Self {
-            status: out.status.code(),
-            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
-        }
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("could not run {} {args:?}: {e}", bin.display()))?;
+
+        // Both pipes are drained on their own threads. A child that fills a pipe buffer blocks
+        // on the write, which would look exactly like a hang and burn the whole timeout.
+        let stdout = drain(child.stdout.take());
+        let stderr = drain(child.stderr.take());
+
+        let deadline = Instant::now() + timeout;
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) => {}
+                Err(e) => return Err(format!("waiting for {} {args:?}: {e}", bin.display())),
+            }
+            if Instant::now() >= deadline {
+                // Kill, then reap: an abandoned child would outlive the run and keep its
+                // isolated home from being removed.
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!(
+                    "{} {args:?} did not finish within {timeout:?} and was killed",
+                    bin.display()
+                ));
+            }
+            std::thread::sleep(POLL_INTERVAL);
+        };
+
+        Ok(Self {
+            status: status.code(),
+            stdout: stdout
+                .join()
+                .map_err(|_| "stdout reader panicked".to_owned())?,
+            stderr: stderr
+                .join()
+                .map_err(|_| "stderr reader panicked".to_owned())?,
+        })
     }
 
     /// How the app would read this failure.
@@ -333,6 +383,18 @@ impl RawOutput {
             self.stdout
         );
     }
+}
+
+/// Reads one pipe to end of file on its own thread, so neither pipe can back up while the
+/// other is being read or while the deadline is being polled.
+fn drain<R: Read + Send + 'static>(pipe: Option<R>) -> JoinHandle<String> {
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(mut pipe) = pipe {
+            let _ = pipe.read_to_end(&mut buf);
+        }
+        String::from_utf8_lossy(&buf).into_owned()
+    })
 }
 
 // -------------------------------------------------------------------------------------------
@@ -504,6 +566,9 @@ fn collect(value: &serde_json::Value, path: &str, out: &mut BTreeSet<(String, Va
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 /// Listing a real vault is the slowest thing either suite does.
 pub const LIST_TIMEOUT: Duration = Duration::from_secs(30);
+/// How often `try_capture` checks whether the child has exited. Small enough to add nothing
+/// measurable to a probe that returns in about 10 ms.
+const POLL_INTERVAL: Duration = Duration::from_millis(2);
 
 pub fn args(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|s| (*s).to_owned()).collect()

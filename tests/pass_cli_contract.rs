@@ -340,6 +340,59 @@ mod env {
     }
 }
 
+/// FR-013: every probe carries a timeout and kills the process on expiry, so a `pass-cli` that
+/// hangs fails the suite instead of wedging it. Asserted against a stand-in that hangs on
+/// purpose -- the real binary cannot be made to hang on demand, and a probe whose timeout has
+/// never been observed to fire is indistinguishable from one that has none.
+mod timeout {
+    use std::path::Path;
+    use std::time::{Duration, Instant};
+
+    use super::support::real_cli::RawOutput;
+
+    /// Long enough that the deadline is unambiguously the thing that fired, short enough that
+    /// this test costs the suite almost nothing.
+    const DEADLINE: Duration = Duration::from_millis(200);
+    /// The stand-in outlives its deadline by this much, then would leave a marker behind.
+    const OUTLIVES_BY: Duration = Duration::from_secs(2);
+
+    #[test]
+    fn a_hung_probe_is_killed_rather_than_waited_on() {
+        let home = tempfile::tempdir().expect("temp dir");
+        let marker = home.path().join("survived");
+        // Sleeps past the deadline, then records that it was still alive. The marker is the
+        // assertion that matters: a probe that merely stopped *waiting* for the child would
+        // leave it running, and the file would appear.
+        let script = format!("sleep {}; : > {}", OUTLIVES_BY.as_secs(), marker.display());
+
+        let started = Instant::now();
+        // Matched rather than `expect_err`, which would need `RawOutput: Debug` -- and a
+        // `RawOutput` can hold a field value, so it deliberately has no way to be printed.
+        let reason =
+            match RawOutput::try_capture(Path::new("sh"), &["-c", &script], Vec::new(), DEADLINE) {
+                Err(reason) => reason,
+                Ok(_) => panic!("a probe that outlives its deadline must fail, not return output"),
+            };
+
+        assert!(
+            reason.contains("did not finish") && reason.contains("killed"),
+            "the failure must say the probe timed out and was killed: {reason}"
+        );
+        assert!(
+            started.elapsed() < OUTLIVES_BY,
+            "try_capture waited {:?}, so it waited the child out instead of killing it",
+            started.elapsed()
+        );
+
+        std::thread::sleep(OUTLIVES_BY + DEADLINE);
+        assert!(
+            !marker.exists(),
+            "the child outlived the probe that spawned it: {} exists",
+            marker.display()
+        );
+    }
+}
+
 /// Unit tests for the shape derivation the live suite's fixture check is built on. They need
 /// no binary, so they run in the default gate rather than behind the live opt-in.
 mod shape {

@@ -378,8 +378,7 @@ async fn committed_fixtures_still_match_reality() {
     let listing = listing(cli).await;
     let vault = first_vault(&listing);
 
-    let mut checked = 0;
-    for (fixture, argv) in [
+    let mut pairs = vec![
         ("info.json", app_argv::info()),
         ("vault-list.json", app_argv::vault_list()),
         (
@@ -390,7 +389,25 @@ async fn committed_fixtures_still_match_reality() {
             "item-list-plain-share-1.json",
             plain_item_list(&vault.share_id),
         ),
-    ] {
+    ];
+
+    // The `-share-2` fixtures were captured from a second vault. Comparing them against the
+    // first vault's listing would say nothing: both fixtures and freshness are per-vault, and
+    // which optional sub-objects appear follows the items that vault holds.
+    let second = listing.vaults.get(1);
+    if let Some(second) = second {
+        pairs.push((
+            "item-list-share-2.json",
+            app_argv::item_list(&second.share_id.0),
+        ));
+        pairs.push((
+            "item-list-plain-share-2.json",
+            plain_item_list(&second.share_id),
+        ));
+    }
+
+    let mut checked = 0;
+    for (fixture, argv) in pairs {
         let out = runner
             .run(argv, LIST_TIMEOUT, CancellationToken::new())
             .await
@@ -402,6 +419,20 @@ async fn committed_fixtures_still_match_reality() {
     }
     eprintln!("fixtures compared: {checked}");
     LiveScenario::covered("fixture-shape", "a signed-in session").report();
+
+    // Reported as its own scenario rather than folded into the one above: an account with one
+    // vault leaves two committed fixtures unchecked, and that must be visible in the coverage
+    // report rather than hidden behind a green run (FR-017).
+    match second {
+        Some(_) => LiveScenario::covered("fixture-shape-share-2", "a second vault").report(),
+        None => LiveScenario::not_covered(
+            "fixture-shape-share-2",
+            "a second vault",
+            "the account has one vault, so item-list-share-2.json and \
+             item-list-plain-share-2.json were compared against nothing",
+        )
+        .report(),
+    }
 }
 
 fn compare(fixture: &str, fresh: &FixtureShape) {
