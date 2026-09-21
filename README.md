@@ -173,6 +173,11 @@ The full keyboard contract is in
 section in [`CLAUDE.md`](CLAUDE.md). Design documents live in
 [`specs/001-quick-access-launcher/`](specs/001-quick-access-launcher/).
 
+`just check` includes a suite that drives the pinned `pass-cli` itself, so drift in its command
+surface fails the build; it needs no Proton account. `just test-live` additionally reads a
+signed-in account read-only, and is worth running before a release or after bumping the
+`nixpkgs-pass-cli` input.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

@@ -97,13 +97,17 @@ just test-live
 comparison with the numbers recorded in the consumed contract (`info` and `vault list` ~0.6 s;
 `item list --show-secrets` over two vaults ~3.6 s).
 
-**Also verify**: nothing in the output is a real secret. Scan it:
+**Also verify**: nothing in the output is a real secret. A marker grep cannot prove this --
+a real account's secrets carry no marker -- so `scripts/leak-scan.sh` instead checks that every
+line the suite printed matches the fixed vocabulary it is allowed to print:
 
 ```bash
-just test-live 2>&1 | tee "$TMPDIR/live.log"
-just leak-scan
-grep -c 'SECRET' "$TMPDIR/live.log"      # expect 0 outside fixture placeholder names
+COSMIC_PASS_LIVE=1 just leak-scan
 ```
+
+It reports `LEAK: the live suite printed lines outside its allowed vocabulary` and exits 1 if
+the suite ever prints something nobody vetted. Exit 2 means a step was skipped, so the scan
+proves nothing about that step.
 
 ## V7. The live suite refuses to run without a session
 
@@ -117,17 +121,24 @@ Sign back in afterwards.
 
 ## V8. Fixture shape drift is reported, not just detected
 
-Hand-edit one key out of a committed fixture, run the live suite, then restore it:
+The check is asymmetric on purpose. A path in the fixture that fresh output no longer carries
+means upstream removed a field, so the fixture is now fiction: **red**. A path in fresh output
+that the fixture lacks is usually sampling chance -- `capture-fixtures` keeps only a couple of
+items per kind -- so it is **reported and passes**.
+
+Exercise the failing direction by adding a key the real `pass-cli` does not emit:
 
 ```bash
-cp -f tests/fixtures/pass-cli/captured/vault-list.json "$TMPDIR/vault-list.json.bak"
-# remove one key, e.g. vaults[].vault_id
-just test-live
-cp -f "$TMPDIR/vault-list.json.bak" tests/fixtures/pass-cli/captured/vault-list.json
+cp -f tests/fixtures/pass-cli/captured/vault-list.json /tmp/vault-list.bak
+python3 -c "import json,pathlib; p=pathlib.Path('tests/fixtures/pass-cli/captured/vault-list.json'); d=json.loads(p.read_text()); [v.update(retired_upstream_field='x') for v in d['vaults']]; p.write_text(json.dumps(d))"
+COSMIC_PASS_LIVE=1 cargo nextest run --all-features --run-ignored=only \
+    -E 'binary(pass_cli_live) and test(committed_fixtures)' --no-capture
+cp -f /tmp/vault-list.bak tests/fixtures/pass-cli/captured/vault-list.json
 ```
 
-**Expect**: red, naming `vaults[].vault_id` as present in fresh output and missing from the
-fixture. The report must list key paths, never values.
+**Expect**: red, with
+`FIXTURE vault-list.json: upstream no longer emits ["vaults[].retired_upstream_field (String)"]`.
+The report lists key paths and value kinds, never values.
 
 ## V9. The coverage table stays honest
 
@@ -147,3 +158,41 @@ nix develop -c cargo nextest run -E 'binary(pass_cli_contract)' 2>&1 | tail -3
 ```
 
 **Expect**: total wall clock well under 30 s (SC-003).
+
+---
+
+## Recorded outcomes
+
+Run on 2026-09-21, `pass-cli` 2.3.3 (`0d7235d`) from the pinned `nixpkgs-pass-cli` input.
+
+| Item | Outcome |
+|---|---|
+| V1 contract suite in the dev shell | pass -- 20 tests, no `SKIP` line |
+| V2 contributor without `pass-cli` | pass -- green with `SKIP pass_cli_contract: no pass-cli on PATH and COSMIC_PASS_CLI unset` |
+| V3 missing binary marked required | pass -- red, naming `COSMIC_PASS_CLI=/nonexistent/pass-cli, and COSMIC_PASS_REQUIRE_CLI=1 marks it required` |
+| V4 SC-002 mutations | pass -- exactly one assertion red per mutation (see below) |
+| V5 developer session untouched | pass -- still signed in after a full contract run; no fixture or tracked file changed |
+| V6 live suite | pass -- 11 tests, ~57 s, every scenario `covered`; 2 vaults, 572 items, 2 TOTP fields |
+| V7 live suite with no session | **not run** -- it would have meant logging the developer out; the preflight path is `live()` in `tests/pass_cli_live.rs`, which panics with `not signed in; run: pass-cli login` |
+| V8 fixture drift | pass -- both directions: a fixture-only path fails red, a fresh-only path is reported and passes |
+| V9 coverage table review | pass -- every clause of the consumed contract appears once, as contract / live / already covered / manual |
+| V10 budget | pass -- contract suite 0.66 s, far inside the 30 s target |
+| `just check` (whole gate) | pass -- 370 tests, line coverage 94.33% of 5981 lines |
+
+### V4 detail
+
+| Mutation in `src/pass/backend.rs` | Failing assertion |
+|---|---|
+| `--show-secrets` -> `--show-secret` | `argv::every_command_the_app_builds_is_accepted` |
+| `item totp` -> `item otp` | `argv::every_command_the_app_builds_is_accepted` |
+| `--share-id=<v>` -> space-separated | `argv::ids_must_use_the_equals_form` |
+
+No collateral failures in any of the three.
+
+### V6 latency, against the figures recorded in the consumed contract
+
+| Command | Recorded | Measured |
+|---|---|---|
+| `info` | ~0.6 s | 0.80 s |
+| `vault list` | ~0.6 s | 0.52 s |
+| `item list --show-secrets`, all vaults | ~3.6 s (2 vaults, 616 items) | 4.14 s (2 vaults, 572 items) |

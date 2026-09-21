@@ -107,7 +107,27 @@ just test     # cargo nextest run
 just cov      # coverage via cargo llvm-cov (main.rs and libcosmic view glue excluded)
 just run      # run the app (pass extra args after `run`)
 just bench    # search benchmark (release build, ignored tests)
+just test-live # drive a real, signed-in pass-cli (read-only); NOT part of `check`
 ```
+
+### Testing against the real `pass-cli`
+
+`pass-cli` publishes no stability policy and has broken this app's assumptions inside patch
+releases, so two suites drive the real binary rather than `tests/fixtures/fake-pass-cli`:
+
+- `tests/pass_cli_contract.rs` runs in `just test` and `just check`. It needs no account, no
+  network and no D-Bus: every probe runs against a throwaway home. The dev shell supplies the
+  pinned `pass-cli`, so it always runs there; outside the shell, with no `pass-cli` on `PATH`,
+  it prints `SKIP pass_cli_contract: ...` and passes.
+- `tests/pass_cli_live.rs` runs only via `just test-live`. It needs `pass-cli login` first and
+  reads the account you are signed into -- read-only, and it never prints a secret. Scenarios
+  it cannot exercise (no TOTP item, no field inside a section) report
+  `SCENARIO <name>: not covered: <reason>` instead of failing. Worth running before a release
+  and after bumping the `nixpkgs-pass-cli` flake input.
+
+`COSMIC_PASS_CLI=/path/to/pass-cli` points both suites at a specific binary, the same variable
+the app itself reads. Which clause of the consumed interface each test defends is tabulated in
+[`specs/003-pass-cli-contract-tests/contracts/pass-cli-test-harness.md`](specs/003-pass-cli-contract-tests/contracts/pass-cli-test-harness.md).
 
 ## Architecture Overview
 

@@ -5,6 +5,12 @@ This is the interface the app depends on. It was confirmed against `pass-cli` 2.
 `tests/fixtures/pass-cli/captured/`; hand-written variants live in
 `tests/fixtures/pass-cli/synthetic/`.
 
+Most of it is now checked automatically rather than by hand: `tests/pass_cli_contract.rs` runs
+the real binary with no account on every `just check`, and `tests/pass_cli_live.rs` covers what
+needs a session (`just test-live`). Which clause is checked by which test is tabulated in
+`specs/003-pass-cli-contract-tests/contracts/pass-cli-test-harness.md`; the clauses still marked
+manual there are the ones a change to this file must re-verify by hand.
+
 ## Invocation rules
 
 - Binary: `$COSMIC_PASS_CLI` or `pass-cli` on `PATH`.
@@ -125,7 +131,12 @@ Caused by:
     2: Could not find vault <ID>
 ```
 
-With `PASS_LOG_LEVEL` unset, a coloured tracing line may come first.
+A coloured `tracing` line comes first whatever `PASS_LOG_LEVEL` says. `PASS_LOG_LEVEL=off`
+lowers the log level but does not silence error-level logging: 2.3.3 writes
+`ERROR pass-cli/src/main.rs:332: Command is not logout there is no session` ahead of the
+`Error:` line, with ANSI escapes. Harmless -- `classify` substring-matches and `summary_line`
+prefers the `Error:` line -- but stderr is never quiet, so nothing may assume it is. Stdout is
+the stream that carries only the payload; `tests/pass_cli_contract.rs::env` asserts that.
 
 ## Error mapping
 
@@ -135,7 +146,8 @@ The app matches against the whole stderr text (case-insensitive), in this order:
 |-------|-------|
 | spawn fails with `NotFound` | `CliMissing` |
 | process exceeded app timeout | `Timeout` |
-| `requires an authenticated client`, `there is no session` | `SignedOut` |
+| `requires an authenticated client`, `there is no session`, `forcing logout` | `SignedOut` |
+| `file is not a database`, `logout --force`, `failed to initialize database` | `LocalData` |
 | `field does not exist` | `FieldMissing` |
 | `locked` | `Locked` *(text not yet observed)* |
 | `could not find`, `error finding item`, `idformat` | `NotFound` |
