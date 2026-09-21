@@ -318,6 +318,7 @@ fn effect_name(effect: &Effect) -> &'static str {
         Effect::HideWindow => "HideWindow",
         Effect::Refresh => "Refresh",
         Effect::ProbeSession => "ProbeSession",
+        Effect::ProbeVersion => "ProbeVersion",
         Effect::FetchAndCopy { .. } => "FetchAndCopy",
         Effect::FetchTotpAndCopy { .. } => "FetchTotpAndCopy",
         Effect::Copy { .. } => "Copy",

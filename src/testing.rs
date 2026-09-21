@@ -13,7 +13,7 @@ use crate::clipboard::{Clipboard, ClipboardError};
 use crate::config::Preferences;
 use crate::core::effects::Effect;
 use crate::core::state::{Model, Msg};
-use crate::model::{AccountId, ItemKey, ItemKind, ItemSummary, ShareId, Vault};
+use crate::model::{AccountId, CliVersion, ItemKey, ItemKind, ItemSummary, ShareId, Vault};
 use crate::pass::backend::{Listing, PassBackend};
 use crate::pass::error::PassError;
 use crate::pass::runner::BoxFuture;
@@ -52,6 +52,7 @@ pub fn listing(items: Vec<ItemSummary>) -> Listing {
 
 struct BackendState {
     account: Result<AccountId, PassError>,
+    version: Result<CliVersion, PassError>,
     listing: Result<Listing, PassError>,
     fields: HashMap<(ItemKey, String), Result<String, PassError>>,
     totp: HashMap<ItemKey, Result<BTreeMap<String, String>, PassError>>,
@@ -88,6 +89,7 @@ impl FakeBackend {
         Self {
             state: Mutex::new(BackendState {
                 account: Ok(AccountId("account-1".into())),
+                version: Ok(crate::core::version::TESTED_MIN),
                 listing: Ok(listing(items)),
                 fields,
                 totp: HashMap::new(),
@@ -108,6 +110,10 @@ impl FakeBackend {
 
     pub fn set_account(&self, account: Result<AccountId, PassError>) {
         lock(&self.state).account = account;
+    }
+
+    pub fn set_version(&self, version: Result<CliVersion, PassError>) {
+        lock(&self.state).version = version;
     }
 
     pub fn set_field(&self, key: &ItemKey, field: &str, value: &str) {
@@ -171,6 +177,10 @@ async fn wait(delay: Duration, cancel: &CancellationToken) -> Result<(), PassErr
 impl PassBackend for FakeBackend {
     fn account(&self) -> BoxFuture<'_, Result<AccountId, PassError>> {
         Box::pin(async move { lock(&self.state).account.clone() })
+    }
+
+    fn version(&self) -> BoxFuture<'_, Result<CliVersion, PassError>> {
+        Box::pin(async move { lock(&self.state).version.clone() })
     }
 
     fn list_all(&self) -> BoxFuture<'_, Result<Listing, PassError>> {

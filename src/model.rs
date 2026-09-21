@@ -175,6 +175,61 @@ pub struct CacheFile {
     pub usage: Vec<crate::core::usage::UsageRecord>,
 }
 
+/// A `pass-cli` release, ordered by precedence so it can be compared to the tested floor.
+///
+/// Only the three numbers are kept: `pass-cli` prints a build hash too, which says nothing
+/// about the command surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct CliVersion {
+    pub major: u32,
+    pub minor: u32,
+    pub patch: u32,
+}
+
+impl CliVersion {
+    pub const fn new(major: u32, minor: u32, patch: u32) -> Self {
+        Self {
+            major,
+            minor,
+            patch,
+        }
+    }
+}
+
+impl std::fmt::Display for CliVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
+    }
+}
+
+impl std::str::FromStr for CliVersion {
+    type Err = ();
+
+    /// Accepts a bare `MAJOR.MINOR.PATCH`. A missing patch reads as `.0`, because `pass-cli`
+    /// has printed both forms.
+    fn from_str(text: &str) -> std::result::Result<Self, Self::Err> {
+        let mut parts = text.split('.');
+        let mut num = || {
+            parts
+                .next()
+                .unwrap_or("0")
+                .trim()
+                .parse::<u32>()
+                .map_err(|_| ())
+        };
+        let major = num()?;
+        let minor = num()?;
+        let patch = match parts.next() {
+            None => 0,
+            Some(p) => p.trim().parse().map_err(|_| ())?,
+        };
+        if parts.next().is_some() {
+            return Err(());
+        }
+        Ok(Self::new(major, minor, patch))
+    }
+}
+
 /// Parses `YYYY-MM-DDTHH:MM:SS` (UTC) into Unix seconds.
 pub fn parse_timestamp(text: &str) -> Option<i64> {
     let b = text.as_bytes();
@@ -273,6 +328,21 @@ mod tests {
         s.fields.push(FieldRef::secret("password", "Password"));
         assert!(s.field("password").is_some());
         assert!(s.field("pin").is_none());
+    }
+
+    #[test]
+    fn cli_versions_parse_and_order() {
+        use std::str::FromStr;
+        assert_eq!(CliVersion::from_str("2.3.3"), Ok(CliVersion::new(2, 3, 3)));
+        // pass-cli has printed a two-part version; read the missing patch as zero.
+        assert_eq!(CliVersion::from_str("2.3"), Ok(CliVersion::new(2, 3, 0)));
+        assert_eq!(CliVersion::from_str("2.3.3.1"), Err(()));
+        assert_eq!(CliVersion::from_str("2.x.3"), Err(()));
+        assert_eq!(CliVersion::from_str(""), Err(()));
+        // Ordering is by precedence, not lexicographic: 2.10 is newer than 2.9.
+        assert!(CliVersion::new(2, 0, 2) < CliVersion::new(2, 3, 0));
+        assert!(CliVersion::new(2, 10, 0) > CliVersion::new(2, 9, 9));
+        assert_eq!(CliVersion::new(2, 3, 3).to_string(), "2.3.3");
     }
 
     #[test]

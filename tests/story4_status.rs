@@ -1,7 +1,8 @@
 //! Acceptance tests for User Story 4: recover from a signed-out or unavailable state.
 
+use cosmic_pass::app::view;
 use cosmic_pass::core::state::{Msg, SessionState};
-use cosmic_pass::model::{AccountId, ItemKind};
+use cosmic_pass::model::{AccountId, CliVersion, ItemKind};
 use cosmic_pass::pass::error::PassError;
 use cosmic_pass::testing::{FakeBackend, Harness, listing, summary};
 
@@ -26,6 +27,35 @@ async fn startup_probes_session_then_refreshes() {
         SessionState::SignedIn(AccountId("account-1".into()))
     );
     assert_eq!(h.backend.list_calls(), 1);
+    assert_eq!(h.model.data.items.len(), 2);
+}
+
+/// A `pass-cli` older than the tested one warns and otherwise changes nothing: the session
+/// still signs in, the items still load. Only a warning, never a refusal.
+#[tokio::test]
+async fn an_old_pass_cli_warns_but_still_works() {
+    let backend = items();
+    backend.set_version(Ok(CliVersion::new(2, 0, 2)));
+    let h = started(backend).await;
+    let warning = h.model.cli_warning.as_deref().expect("a warning");
+    assert!(warning.contains("2.0.2"), "{warning}");
+    assert!(view::notices(&h.model).contains(&warning));
+    assert_eq!(
+        h.model.session,
+        SessionState::SignedIn(AccountId("account-1".into()))
+    );
+    assert_eq!(h.model.data.items.len(), 2);
+}
+
+/// A `pass-cli` that cannot report a version is left to the session probe to explain.
+#[tokio::test]
+async fn an_unreadable_version_adds_no_line() {
+    let backend = items();
+    backend.set_version(Err(PassError::Protocol {
+        command: "--version",
+    }));
+    let h = started(backend).await;
+    assert_eq!(h.model.cli_warning, None);
     assert_eq!(h.model.data.items.len(), 2);
 }
 

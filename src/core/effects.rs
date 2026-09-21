@@ -15,6 +15,8 @@ pub enum Effect {
     Refresh,
     /// Check which account is signed in.
     ProbeSession,
+    /// Read the installed `pass-cli`'s version, to warn about untested ones.
+    ProbeVersion,
     /// Fetch one field with `pass-cli` and copy it.
     FetchAndCopy {
         key: ItemKey,

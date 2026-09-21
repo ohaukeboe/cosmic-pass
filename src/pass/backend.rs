@@ -10,7 +10,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::error::PassError;
 use super::runner::{BoxFuture, CommandRunner};
-use crate::model::{AccountId, ItemKey, ItemSummary, Vault};
+use crate::model::{AccountId, CliVersion, ItemKey, ItemSummary, Vault};
 
 type Result<T> = std::result::Result<T, PassError>;
 
@@ -24,6 +24,8 @@ pub struct Listing {
 pub trait PassBackend: Send + Sync {
     /// The signed-in account. Fails with [`PassError::SignedOut`] when signed out.
     fn account(&self) -> BoxFuture<'_, Result<AccountId>>;
+    /// The installed `pass-cli`'s version. Needs no session.
+    fn version(&self) -> BoxFuture<'_, Result<CliVersion>>;
     /// Lists every vault and its active items. Fails if any vault listing fails.
     fn list_all(&self) -> BoxFuture<'_, Result<Listing>>;
     fn get_field(
@@ -61,6 +63,7 @@ impl<R: CommandRunner + 'static> PassCli<R> {
     }
 }
 
+const VERSION_TIMEOUT: Duration = Duration::from_secs(5);
 const INFO_TIMEOUT: Duration = Duration::from_secs(5);
 const LIST_TIMEOUT: Duration = Duration::from_secs(20);
 const FIELD_TIMEOUT: Duration = Duration::from_secs(10);
@@ -88,6 +91,19 @@ impl<R: CommandRunner + 'static> PassBackend for PassCli<R> {
                 )
                 .await?;
             super::parse::parse_account(&out.stdout)
+        })
+    }
+
+    fn version(&self) -> BoxFuture<'_, Result<CliVersion>> {
+        Box::pin(async move {
+            let out = self
+                .run(
+                    args(["--version"]),
+                    VERSION_TIMEOUT,
+                    CancellationToken::new(),
+                )
+                .await?;
+            super::parse::parse_version(&out.stdout)
         })
     }
 

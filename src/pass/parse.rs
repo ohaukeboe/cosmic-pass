@@ -14,7 +14,8 @@ use zeroize::Zeroize;
 
 use super::error::PassError;
 use crate::model::{
-    AccountId, FieldRef, ItemId, ItemKey, ItemKind, ItemSummary, ShareId, Vault, parse_timestamp,
+    AccountId, CliVersion, FieldRef, ItemId, ItemKey, ItemKind, ItemSummary, ShareId, Vault,
+    parse_timestamp,
 };
 
 type Result<T> = std::result::Result<T, PassError>;
@@ -86,6 +87,23 @@ pub fn parse_field(bytes: &[u8]) -> Result<SecretString> {
         text.truncate(text.len() - 1);
     }
     Ok(SecretString::from(text))
+}
+
+/// The version out of `pass-cli --version`, whose line reads
+/// `Proton Pass CLI 2.3.3 (0d7235d)`.
+///
+/// The first dotted number wins rather than a fixed word position: the banner text is prose
+/// upstream has never promised to keep, while the version itself is the only field the line
+/// exists to carry.
+pub fn parse_version(bytes: &[u8]) -> Result<CliVersion> {
+    let protocol = || PassError::Protocol {
+        command: "--version",
+    };
+    std::str::from_utf8(bytes)
+        .map_err(|_| protocol())?
+        .split_whitespace()
+        .find_map(|word| word.trim_start_matches('v').parse::<CliVersion>().ok())
+        .ok_or_else(protocol)
 }
 
 pub fn parse_totp(bytes: &[u8]) -> Result<BTreeMap<String, SecretString>> {
@@ -769,6 +787,34 @@ mod tests {
     use std::path::PathBuf;
 
     const MARKER: &str = "SECRET-FIXTURE-";
+
+    /// Captured from pass-cli 2.3.3.
+    #[test]
+    fn version_banner_yields_the_version() {
+        assert_eq!(
+            parse_version(b"Proton Pass CLI 2.3.3 (0d7235d)\n"),
+            Ok(CliVersion::new(2, 3, 3))
+        );
+        // The banner wording is upstream prose; only the number has to be found.
+        assert_eq!(
+            parse_version(b"pass-cli v2.4.0\n"),
+            Ok(CliVersion::new(2, 4, 0))
+        );
+    }
+
+    #[test]
+    fn version_without_a_number_is_a_protocol_error() {
+        for raw in [b"".as_slice(), b"Proton Pass CLI\n", b"nightly (0d7235d)\n"] {
+            assert_eq!(
+                parse_version(raw),
+                Err(PassError::Protocol {
+                    command: "--version"
+                }),
+                "{}",
+                String::from_utf8_lossy(raw)
+            );
+        }
+    }
 
     fn fixture(dir: &str, name: &str) -> Vec<u8> {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

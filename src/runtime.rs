@@ -94,6 +94,10 @@ pub fn execute(effect: Effect, deps: &Deps, model: &Model) -> Step {
             let backend = deps.backend.clone();
             future(async move { Some(Msg::SessionProbed(backend.account().await)) })
         }
+        Effect::ProbeVersion => {
+            let backend = deps.backend.clone();
+            future(async move { Some(Msg::VersionProbed(backend.version().await)) })
+        }
         Effect::StartLogin => Step::Stream(login_stream(deps.backend.clone())),
         Effect::FetchReveal {
             key,

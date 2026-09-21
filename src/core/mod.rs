@@ -6,3 +6,4 @@ pub mod search;
 pub mod state;
 pub mod totp;
 pub mod usage;
+pub mod version;

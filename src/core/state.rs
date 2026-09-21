@@ -12,7 +12,7 @@ use super::totp::TotpDisplay;
 use super::usage::UsageTable;
 use crate::config::{Action, KeyChord, Preferences};
 use crate::model::{
-    AccountId, CACHE_FORMAT_VERSION, CacheFile, FieldRef, ItemKey, ItemSummary, Vault,
+    AccountId, CACHE_FORMAT_VERSION, CacheFile, CliVersion, FieldRef, ItemKey, ItemSummary, Vault,
 };
 use crate::pass::backend::Listing;
 use crate::pass::error::PassError;
@@ -247,6 +247,8 @@ pub enum Msg {
     /// App start: check the session (and load the cache).
     Startup,
     SessionProbed(Result<AccountId, PassError>),
+    /// The installed `pass-cli`'s version, or why it could not be read.
+    VersionProbed(Result<CliVersion, PassError>),
     StartLogin,
     /// One output line of `pass-cli login`.
     LoginLine(String),
@@ -287,6 +289,10 @@ pub struct Model {
     pub usage: UsageTable,
     /// URL printed by `pass-cli login`, shown while signing in.
     pub login_url: Option<String>,
+    /// Set once at startup when the installed `pass-cli` is outside the tested range. It has
+    /// no expiry, unlike [`ViewState::notice`]: the mismatch lasts until the user upgrades,
+    /// and a line that vanishes after a few seconds would be missed by whoever needs it.
+    pub cli_warning: Option<String>,
     /// The account the loaded data belongs to: whoever was signed in when the listing
     /// arrived, or the account the cache file names. An account switch is measured against
     /// this, not against `session`, which may have passed through `Locked` since.
@@ -519,7 +525,33 @@ impl Model {
                 ) {
                     self.session = SessionState::Checking;
                 }
-                vec![Effect::LoadCache, Effect::ProbeSession]
+                vec![
+                    Effect::LoadCache,
+                    Effect::ProbeVersion,
+                    Effect::ProbeSession,
+                ]
+            }
+            Msg::VersionProbed(result) => {
+                self.cli_warning = match result {
+                    Ok(found) => {
+                        let warning = crate::core::version::warning(found);
+                        if let Some(text) = &warning {
+                            tracing::warn!("{text}");
+                        } else {
+                            tracing::debug!("pass-cli {found}");
+                        }
+                        warning
+                    }
+                    // A version that cannot be read is not a version that is wrong. Whatever
+                    // stopped the probe — the tool missing, a banner that stopped carrying a
+                    // number — the session probe reports it if it matters, so say nothing
+                    // rather than blame the version.
+                    Err(e) => {
+                        tracing::warn!("could not read the pass-cli version: {e}");
+                        None
+                    }
+                };
+                vec![]
             }
             Msg::SessionProbed(Ok(account)) => self.signed_in(account),
             Msg::SessionProbed(Err(error)) => {
@@ -2325,6 +2357,7 @@ pub(crate) mod tests {
             .map(|e| match e {
                 Effect::Refresh => "Refresh",
                 Effect::ProbeSession => "ProbeSession",
+                Effect::ProbeVersion => "ProbeVersion",
                 Effect::DeleteCache => "DeleteCache",
                 Effect::StartLogin => "StartLogin",
                 Effect::LoadCache => "LoadCache",
@@ -2338,8 +2371,45 @@ pub(crate) mod tests {
     fn startup_probes_session() {
         let mut m = Model::default();
         let fx = m.update(Msg::Startup, 0);
-        assert_eq!(names(&fx), ["LoadCache", "ProbeSession"]);
+        assert_eq!(names(&fx), ["LoadCache", "ProbeVersion", "ProbeSession"]);
         assert_eq!(m.session, SessionState::Checking);
+    }
+
+    #[test]
+    fn an_old_pass_cli_warns_without_blocking_anything() {
+        let mut m = Model::default();
+        let fx = m.update(Msg::VersionProbed(Ok(CliVersion::new(2, 0, 2))), 0);
+        // A warning only: nothing is retried, refused or torn down.
+        assert!(fx.is_empty());
+        let text = m.cli_warning.expect("a warning");
+        assert!(text.contains("2.0.2"), "{text}");
+        assert_eq!(m.session, SessionState::Unknown);
+    }
+
+    #[test]
+    fn a_tested_pass_cli_leaves_no_warning() {
+        let mut m = Model {
+            cli_warning: Some("stale".into()),
+            ..Model::default()
+        };
+        m.update(Msg::VersionProbed(Ok(CliVersion::new(2, 3, 3))), 0);
+        assert_eq!(m.cli_warning, None);
+    }
+
+    /// An unreadable version says nothing about the version. `SessionProbed` reports a
+    /// missing or broken `pass-cli`; a second line blaming the version would misdirect.
+    #[test]
+    fn an_unreadable_version_warns_about_nothing() {
+        let mut m = Model::default();
+        m.update(Msg::VersionProbed(Err(PassError::CliMissing)), 0);
+        assert_eq!(m.cli_warning, None);
+        m.update(
+            Msg::VersionProbed(Err(PassError::Protocol {
+                command: "--version",
+            })),
+            0,
+        );
+        assert_eq!(m.cli_warning, None);
     }
 
     #[test]

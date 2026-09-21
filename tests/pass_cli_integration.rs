@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use cosmic_pass::core::version::warning as version_warning;
 use cosmic_pass::pass::error::PassError;
 use cosmic_pass::pass::runner::{CommandRunner, TokioRunner};
 use tokio_util::sync::CancellationToken;
@@ -245,7 +246,7 @@ mod runner {
 
 mod backend {
     use super::*;
-    use cosmic_pass::model::{AccountId, ItemKey};
+    use cosmic_pass::model::{AccountId, CliVersion, ItemKey};
     use cosmic_pass::pass::backend::{PassBackend, PassCli};
     use secrecy::ExposeSecret;
     use std::sync::Arc;
@@ -260,6 +261,43 @@ mod backend {
             .lines()
             .map(str::to_owned)
             .collect()
+    }
+
+    #[tokio::test]
+    async fn version_reads_the_banner() {
+        let v = backend(&[]).version().await.unwrap();
+        assert_eq!(v, CliVersion::new(2, 3, 3));
+    }
+
+    /// `--version` needs no session, so it must not be blocked by a signed-out one.
+    #[tokio::test]
+    async fn version_is_read_while_signed_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("argv");
+        let v = backend(&[
+            ("FAKE_ARGV_LOG", log.to_str().unwrap()),
+            ("FAKE_VERSION", "Proton Pass CLI 2.0.2 (deadbee)"),
+        ])
+        .version()
+        .await
+        .unwrap();
+        assert_eq!(v, CliVersion::new(2, 0, 2));
+        assert_eq!(logged(&log), ["--version"]);
+        assert!(crate::version_warning(v).is_some());
+    }
+
+    #[tokio::test]
+    async fn an_unreadable_banner_is_a_protocol_error() {
+        let err = backend(&[("FAKE_VERSION", "Proton Pass CLI")])
+            .version()
+            .await
+            .unwrap_err();
+        assert_eq!(
+            err,
+            PassError::Protocol {
+                command: "--version"
+            }
+        );
     }
 
     #[tokio::test]

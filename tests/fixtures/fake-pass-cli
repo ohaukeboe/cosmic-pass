@@ -9,6 +9,7 @@
 #   FAKE_ITEMS=N      `item list` prints N generated login items
 #   FAKE_LOGIN_URL    `login` prints "Please go to <url>" before exiting 0
 #   FAKE_PID_FILE     write this process's pid here
+#   FAKE_VERSION      the banner `--version` prints (default: pass-cli 2.3.3's)
 # Fixture files:
 #   info.json, vault-list.json, item-list-<share>.json,
 #   item-view-<share>-<item>-<field>.txt, item-totp-<share>-<item>.json
@@ -63,6 +64,7 @@ emit() {
 }
 
 case "$cmd" in
+    "--version"*) printf '%s\n' "${FAKE_VERSION:-Proton Pass CLI 2.3.3 (0d7235d)}"; finish 0 ;;
     "info "*) emit "$dir/info.json" ;;
     "vault list") emit "$dir/vault-list.json" ;;
     "item list")

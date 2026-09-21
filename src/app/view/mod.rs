@@ -39,11 +39,13 @@ pub fn pane(mode: &Mode) -> Pane {
     }
 }
 
-/// The caption lines a pane shows under its header: why the data may be out of date, then the
-/// inline notice left by the last action. Shared, because a pane that renders neither leaves a
-/// failed reveal or copy with nothing to show for it.
+/// The caption lines a pane shows under its header: a `pass-cli` outside the tested range,
+/// why the data may be out of date, then the inline notice left by the last action. Shared,
+/// because a pane that renders none of them leaves a failed reveal or copy with nothing to
+/// show for it.
 pub fn notices(model: &Model) -> Vec<&str> {
-    let mut lines = Vec::with_capacity(2);
+    let mut lines = Vec::with_capacity(3);
+    lines.extend(model.cli_warning.as_deref());
     lines.extend(model.stale_notice());
     lines.extend(model.view.notice.as_ref().map(|n| n.text.as_str()));
     lines
