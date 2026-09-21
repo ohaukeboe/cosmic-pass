@@ -161,23 +161,42 @@ nix develop -c cargo nextest run -E 'binary(pass_cli_contract)' 2>&1 | tail -3
 
 ---
 
+## V11. A hung probe fails the suite instead of wedging it
+
+```bash
+cargo nextest run -E 'binary(pass_cli_contract) and test(timeout::)' --no-capture
+```
+
+**Expect**: green in about 2.4 s. The probe drives `sh -c 'sleep 2; : > marker'` with a 200 ms
+deadline and asserts three things: the failure says the probe timed out and was killed, the call
+returned long before the child would have finished, and the marker the child would write never
+appears -- the last one is what separates "killed" from "abandoned" (FR-013).
+
+To see it fail, delete the `child.kill()` call in `RawOutput::try_capture` and re-run: the marker
+assertion goes red with `the child outlived the probe that spawned it`.
+
+---
+
 ## Recorded outcomes
 
 Run on 2026-09-21, `pass-cli` 2.3.3 (`0d7235d`) from the pinned `nixpkgs-pass-cli` input.
+Re-recorded the same day after Phase 7 added the timeout probe and the `-share-2` fixture
+comparison.
 
 | Item | Outcome |
 |---|---|
-| V1 contract suite in the dev shell | pass -- 20 tests, no `SKIP` line |
+| V1 contract suite in the dev shell | pass -- 21 contract tests, 371 in the whole `just test` run, no `SKIP` line |
 | V2 contributor without `pass-cli` | pass -- green with `SKIP pass_cli_contract: no pass-cli on PATH and COSMIC_PASS_CLI unset` |
 | V3 missing binary marked required | pass -- red, naming `COSMIC_PASS_CLI=/nonexistent/pass-cli, and COSMIC_PASS_REQUIRE_CLI=1 marks it required` |
 | V4 SC-002 mutations | pass -- exactly one assertion red per mutation (see below) |
-| V5 developer session untouched | pass -- still signed in after a full contract run; no fixture or tracked file changed |
-| V6 live suite | pass -- 11 tests, ~57 s, every scenario `covered`; 2 vaults, 572 items, 2 TOTP fields |
+| V5 developer session untouched | **partial** -- still signed in after a full contract run, and no fixture or tracked file changed, but the probes do leave state outside their temp homes: six permanent keys per run in the *shared* kernel keyring, which is per-uid and not covered by a `HOME` override. See T057 |
+| V6 live suite | pass on the pre-Phase-7 suite -- 11 tests, ~57 s, every scenario `covered`; 2 vaults, 572 items, 2 TOTP fields. **Not re-run since**: the session is locked, so `live()` stops at `pass-cli is not usable: the Proton Pass session is locked`. The `fixtures compared:` count and the `SCENARIO fixture-shape-share-2` line are therefore unobserved (cosmic-pass-5kr) |
 | V7 live suite with no session | **not run** -- it would have meant logging the developer out; the preflight path is `live()` in `tests/pass_cli_live.rs`, which panics with `not signed in; run: pass-cli login` |
 | V8 fixture drift | pass -- both directions: a fixture-only path fails red, a fresh-only path is reported and passes |
 | V9 coverage table review | pass -- every clause of the consumed contract appears once, as contract / live / already covered / manual |
-| V10 budget | pass -- contract suite 0.66 s, far inside the 30 s target |
-| `just check` (whole gate) | pass -- 370 tests, line coverage 94.33% of 5981 lines |
+| V10 budget | pass -- contract suite 2.417 s, of which 2.4 s is V11's deliberate sleep; the other twenty probes run in 0.189 s. Far inside the 30 s target |
+| V11 hung probe killed | pass -- green in 2.409 s; removing `child.kill()` turns the marker assertion red, as documented above |
+| `just check` (whole gate) | pass -- 371 tests, line coverage 94.33% of 5981 lines |
 
 ### V4 detail
 

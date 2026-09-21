@@ -531,3 +531,66 @@ T054 and T055 close the two gaps `/speckit-converge` found.
   needs the account passphrase. The code compiles and passes `clippy -D warnings`; the
   `fixtures compared: 6` count and the `fixture-shape-share-2` line have not been observed.
   Run `just test-live` after unlocking the session to close this out.
+
+---
+
+## Phase 8: Convergence
+
+Appended by `/speckit-converge` on 2026-09-21, after Phase 7 closed. The two gaps that phase
+named are gone: `RawOutput::try_capture` kills a probe on its deadline, and the `-share-2`
+fixtures are compared against the second vault. One record is now stale.
+
+- [X] T056 Refresh the "Recorded outcomes" table in [quickstart.md](./quickstart.md) per T052
+      (`partial`). It is dated the same day but predates Phase 7, so it no longer describes the
+      suite: V1 reads `20 tests` and V10 `0.66 s` where the contract suite is now 21 tests in
+      about 2.4 s — almost all of it the deliberate 2 s sleep in
+      `timeout::a_hung_probe_is_killed_rather_than_waited_on` — and the whole-gate row reads
+      `370 tests` where `just check` now runs 371 at 94.33% line coverage. Re-run V1 and V10,
+      record what they print, and add a row for the timeout probe so the guarantee has a named
+      validation step like every other one. V6 needs an unlocked session (cosmic-pass-5kr): once
+      it runs, record whether `fixtures compared:` reads 6, and whether the new
+      `SCENARIO fixture-shape-share-2` line reported `covered` — the 2026-09-21 run saw 2 vaults,
+      so it should. Leave V4, V5, V8 and V9 as recorded; Phase 7 touched none of what they
+      assert.
+- [ ] T057 Stop contract probes from leaking a permanent kernel-keyring key, per FR-012 and
+      harness-contract guarantee 2 (`contradicts`). Found while running T056.
+
+      **Measured**: each contract-suite run leaves six `user`-type keys named
+      `keyring:cli-local-key:<sha256>@ProtonPassCLI` in the *persistent* keyring
+      `_persistent.1000`, marked `perm`. That keyring is per-uid and is not covered by the
+      `HOME`/`XDG_*` overrides, so `IsolatedEnv` does not isolate it. The quota is 200 keys /
+      20000 bytes for the whole user, so roughly 30 runs exhausts it and every probe then fails
+      with `Error: Error creating client features / Error accessing keyring: Platform failure:
+      QuotaExceeded`. This was observed, not predicted: the user's keyring reached 141/200 keys
+      and 19944/20000 bytes, `argv::ids_must_use_the_equals_form` failed 5/5 in isolation, and
+      137 leaked keys had to be unlinked by hand before the suite went green again. It also
+      makes guarantee 2 false and the quickstart's V5 row only partly true, and it spends a
+      quota the developer's other applications share.
+
+      **The key is addressable exactly**, so a teardown needs no guessing and cannot race a
+      concurrent test: the description is
+      `keyring:cli-local-key:{sha256 of $XDG_DATA_HOME/proton-pass-cli/.session}@ProtonPassCLI`.
+      Verified by hand: `sha256sum` of that directory path reproduced the observed description
+      byte for byte.
+
+      **Candidate fixes, none chosen** -- this needs a decision, which is why it is its own task:
+      1. `IsolatedEnv::drop` unlinks its own key. Needs `sha2` (already in `Cargo.lock`) as a
+         dev-dependency plus either `libc::syscall(SYS_keyctl, ...)` (unsafe FFI in a test
+         helper, works everywhere) or the `keyctl` binary added to the devShell (no unsafe, but
+         a no-op for contributors outside Nix). Note that plan.md promised no new crate.
+      2. Run the probes that do not need a real `SignedOut` with `PROTON_PASS_LINUX_KEYRING=dbus`
+         and the bus already pointed at nothing: measured to create **no** key, but the failure
+         becomes `Linux keyring: D-Bus secret service is unavailable` rather than `SignedOut`,
+         so `assert_signed_out` would have to become "no clap usage error" for those probes, and
+         `classify::unauthenticated_stderr_is_signed_out` would still need the kernel backend.
+      3. Interim, independent of the above: fail resolution with an actionable message when
+         `/proc/key-users` shows the quota nearly spent, instead of letting probes fail with
+         `QuotaExceeded` from inside `pass-cli`.
+
+      **Rejected**: `pass-cli logout --force` in the isolated home. Measured -- it exits 0 and
+      leaves the key in place, despite the binary's "Best-effort keyring cleanup during force
+      logout" string.
+
+      Whatever is chosen, add the guarantee to `contracts/pass-cli-test-harness.md` and assert it:
+      a probe must leave the kernel keyring as it found it, checked by the exact description
+      above rather than by a count.
