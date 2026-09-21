@@ -6,6 +6,11 @@ A keyboard-driven quick-access popup for [Proton Pass](https://proton.me/pass) o
 Press a shortcut, type a few letters, press Enter: the password is on your clipboard and the
 popup is gone.
 
+<p align="center">
+  <img src="docs/screenshots/search.png" alt="Search results for a query" width="49%">
+  <img src="docs/screenshots/actions.png" alt="Action list for an item" width="49%">
+</p>
+
 > Unofficial. Not affiliated with or endorsed by Proton AG. All communication with Proton
 > Pass goes through the official
 > [`pass-cli`](https://protonpass.github.io/pass-cli/) command-line tool.
