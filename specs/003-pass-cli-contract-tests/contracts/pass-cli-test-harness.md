@@ -69,16 +69,16 @@ Guarantees, each asserted rather than assumed:
 2. Everything written lands inside the probe's own home. Measured on 2.3.3: the only file
    created is `$XDG_DATA_HOME/proton-pass-cli/.session/pass-cli.db`. A probe that wrote
    somewhere else would have ignored the overrides, which is what the assertion catches. The
-   one thing a probe leaves outside its home is its kernel-keyring key, which guarantee 5
+   one thing a probe leaves outside its home is its kernel-keyring key, which guarantee 4
    bounds.
 3. The developer's `pass-cli` session survives a full contract run unchanged.
-5. A probe's kernel-keyring key is created once and reused, never accumulated. Asserted by
+4. A probe's kernel-keyring key is created once and reused, never accumulated. Asserted by
    `keyring::a_probe_reuses_one_kernel_key`, which reproduces the description from the store
    path and checks that a second `IsolatedEnv` with the same label lands on the same path and
    the same description; and by `keyring::help_and_version_touch_no_store`, which is why
    `stateless()` is allowed a random path. Repeated whole-suite runs were measured to leave the
    key count unchanged.
-4. No probe outlives its deadline. Probes that go through `TokioRunner` carry the app's own
+5. No probe outlives its deadline. Probes that go through `TokioRunner` carry the app's own
    timeout; the raw probes -- the ones that need the exit status and stderr the runner hides --
    go through `RawOutput::try_capture`, which kills the child once `PROBE_TIMEOUT` (10 s) has
    passed and reports the timeout as a failure. Version resolution takes the same path, so a
@@ -112,7 +112,7 @@ This table is the mechanism behind SC-001 and must be kept in sync when a clause
 | stdin null; stdout/stderr piped | already covered | `pass_cli_integration.rs::runner::sets_quiet_env_and_null_stdin` |
 | Own process group, killed on drop/timeout/cancel | already covered | `pass_cli_integration.rs::runner::{timeout,cancel,dropping}_kills_the_process` |
 | Per-command timeouts | already covered | `pass_cli_integration.rs::runner` |
-| A probe leaves no new keyring key behind | contract | `keyring::a_probe_reuses_one_kernel_key`, `keyring::help_and_version_touch_no_store` |
+| A probe's kernel-keyring key is created once per probe home and reused, never accumulated | contract | `keyring::a_probe_reuses_one_kernel_key`, `keyring::help_and_version_touch_no_store` |
 | A probe that hangs is killed, not waited on | contract | `timeout::a_hung_probe_is_killed_rather_than_waited_on` -- a stand-in that outlives its deadline on purpose; the real binary cannot be made to hang on demand |
 | At most 4 processes at once | already covered | `pass_cli_integration.rs::runner::runs_at_most_four_processes_at_once` |
 | Secrets never in argv | contract + live | argv comes from `backend::argv`, which takes ids and field names only |

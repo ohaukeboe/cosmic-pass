@@ -622,3 +622,44 @@ unchanged. This is the deviation from plan.md's "no new crate"; it buys a race-f
 two `IsolatedEnv`s with the same label land on the same path — asserting only "this home has one
 key" passed just as well with random paths, which was the bug, and that weaker version was
 written and observed to pass before being tightened.
+
+---
+
+## Phase 9: Convergence
+
+Appended by `/speckit-converge` on 2026-09-21, after Phase 8 closed. The implementation itself
+matches the spec: the contract suite is green at 23 tests in 2.4 s, `cargo fmt --check` and
+`clippy -D warnings` are clean, and every functional requirement that can be satisfied without a
+signed-in session is satisfied in code. One documentation record no longer describes what the
+code does.
+
+- [X] T058 Correct the keyring rows in
+      [contracts/pass-cli-test-harness.md](./contracts/pass-cli-test-harness.md) per FR-022,
+      SC-001 and Constitution V (`partial`). Two defects, both introduced when T057 changed the
+      guarantee from "no key" to "one key, reused":
+      1. The coverage table still reads `A probe leaves no new keyring key behind`. That is
+         false on a fresh checkout, where the seven labelled probe homes each mint one
+         `keyring:cli-local-key:<sha256>@ProtonPassCLI` key; the guarantee the two named tests
+         actually hold is that a key is created once per probe home and reused for ever after.
+         Restate the clause as what is asserted, matching the wording already used in the
+         isolation contract above it and in quickstart V12.
+      2. The isolation contract's guarantee list is numbered 1, 2, 3, 5, 4 — guarantee 5 (the
+         keyring) was inserted ahead of guarantee 4 (deadlines). Renumber to 1..5 in order and
+         keep the cross-reference in guarantee 2 (`which guarantee 5 bounds`) pointing at the
+         keyring guarantee's new number.
+
+## Convergence notes (2026-09-21, Phase 9)
+
+Checked and found already satisfied, so no task was appended for any of them: discovery and the
+skip-versus-fail rule (FR-001..FR-003, `resolve`), the live opt-in double gate (FR-004), the
+version floor (FR-005), the command, flag and argv surface (FR-006..FR-008, FR-010), `SignedOut`
+classification (FR-009), the quiet-stdout assertion (FR-011), isolation (FR-012), probe deadlines
+(FR-013, `RawOutput::try_capture`), the live scenarios and their coverage reporting
+(FR-014..FR-018), the six-fixture shape check (FR-019), the leak scan's vocabulary step
+(FR-020, FR-021), and the `just test-live` documentation in `README.md`, `CLAUDE.md` and
+`AGENTS.md` (FR-023). Both amendments to the consumed contract (T046, T047) are applied.
+
+**Not appended, because no implementation pass can close it**: SC-005 and the live half of
+FR-014..FR-019 remain unobserved since Phase 7 — the developer's `pass-cli` session is locked,
+so `live()` stops before any scenario runs. Tracked as `cosmic-pass-5kr`; it needs the account
+passphrase, not a code change.
