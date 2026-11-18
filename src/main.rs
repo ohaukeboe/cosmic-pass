@@ -19,6 +19,9 @@ fn main() -> std::process::ExitCode {
         Some(Command::ClipboardServe { timeout, secret }) => {
             return cosmic_pass::clipboard::serve::main(timeout, secret);
         }
+        Some(Command::Serve {
+            clipboard_clear_secs,
+        }) => return cosmic_pass::serve::main(clipboard_clear_secs),
         Some(Command::Show) => Some(RemoteAction::Show),
         Some(Command::Hide) => Some(RemoteAction::Hide),
         Some(Command::Refresh) => Some(RemoteAction::Refresh),

@@ -155,6 +155,19 @@ toggles the popup; if the background service is not running, the first run start
 The full keyboard contract is in
 [`specs/001-quick-access-launcher/contracts/keyboard.md`](specs/001-quick-access-launcher/contracts/keyboard.md).
 
+## Serve mode
+
+`cosmic-pass serve --clipboard-clear-secs <10..600>` runs the same search, copy, reveal and
+sign-in without a window, for another front end — for example a Quickshell bar in a session
+other than COSMIC. The front end starts it as a child process, writes one JSON intent per line
+to its stdin (`{"t":"query","text":"git"}`, `{"t":"copy_primary"}`, ...) and reads one JSON
+snapshot of what to draw per line from its stdout. It exits when stdin closes.
+
+It does not read or write the COSMIC preferences, and it lists at most 50 matches. Copies go
+through the same clipboard helper as the popup and clear on the same terms. Run only one
+backend per session: both share the encrypted cache. The wire format is
+[`specs/004-serve-mode/contracts/serve-protocol.md`](specs/004-serve-mode/contracts/serve-protocol.md).
+
 ## Security notes
 
 - Secret values are fetched from `pass-cli` only when you copy or reveal them, and are never

@@ -15,7 +15,6 @@ use cosmic::iced::{Subscription, time, window};
 use cosmic::{Element, task};
 use serde::{Deserialize, Serialize};
 
-use crate::clipboard::{Clipboard, ClipboardError, HelperClipboard};
 use crate::config::{Modifier, Preferences};
 use crate::core::effects::Effect;
 use crate::core::state::{Model, Msg};
@@ -95,20 +94,6 @@ pub struct CosmicPass {
 }
 
 const DOUBLE_CLICK: Duration = Duration::from_millis(400);
-
-/// Used when the clipboard helper cannot be located; every copy fails visibly.
-struct NoClipboard;
-
-impl Clipboard for NoClipboard {
-    fn copy(
-        &self,
-        _value: secrecy::SecretString,
-        _secret: bool,
-        _clear_after: Duration,
-    ) -> crate::pass::runner::BoxFuture<'_, Result<(), ClipboardError>> {
-        Box::pin(async { Err(ClipboardError::Unavailable) })
-    }
-}
 
 fn load_preferences() -> Preferences {
     use cosmic::cosmic_config::CosmicConfigEntry;
@@ -398,13 +383,7 @@ impl cosmic::Application for CosmicPass {
 
     fn init(mut core: Core, flags: Flags) -> (Self, Task<Message>) {
         core.set_keyboard_nav(false);
-        let clipboard: Arc<dyn Clipboard> = match HelperClipboard::from_env() {
-            Ok(c) => Arc::new(c),
-            Err(e) => {
-                tracing::error!("clipboard helper unavailable: {e}");
-                Arc::new(NoClipboard)
-            }
-        };
+        let clipboard = crate::clipboard::from_env_or_none();
         let keys: Arc<dyn crate::cache::keystore::KeyStore> =
             Arc::new(crate::cache::keystore::Oo7KeyStore);
         let deps = Deps {

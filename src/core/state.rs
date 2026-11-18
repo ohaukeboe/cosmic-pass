@@ -289,6 +289,9 @@ pub struct Model {
     pub usage: UsageTable,
     /// URL printed by `pass-cli login`, shown while signing in.
     pub login_url: Option<String>,
+    /// Output lines of the sign-in in progress, for a front end that shows its progress.
+    /// `pass-cli login` prints status and the URL, never a secret.
+    pub login_lines: Vec<String>,
     /// Set once at startup when the installed `pass-cli` is outside the tested range. It has
     /// no expiry, unlike [`ViewState::notice`]: the mismatch lasts until the user upgrades,
     /// and a line that vanishes after a few seconds would be missed by whoever needs it.
@@ -459,7 +462,16 @@ impl Model {
             Msg::PageDown => self.move_selection(PAGE as isize),
             Msg::PageUp => self.move_selection(-(PAGE as isize)),
             Msg::Select(index) => {
-                if index < self.view.results.len() {
+                if let Mode::Actions { selected, .. } = self.view.mode {
+                    // A pointer on a field row moves the highlight like the arrows do, and
+                    // takes any reveal with it for the same reason (FR-102).
+                    if index < self.actions().len() && index != selected {
+                        self.clear_revealed();
+                        if let Mode::Actions { selected: s, .. } = &mut self.view.mode {
+                            *s = index;
+                        }
+                    }
+                } else if index < self.view.results.len() {
                     self.view.selected = index;
                 }
                 vec![]
@@ -572,9 +584,11 @@ impl Model {
                 }
                 self.session = SessionState::LoggingIn;
                 self.login_url = None;
+                self.login_lines.clear();
                 vec![Effect::StartLogin]
             }
             Msg::LoginLine(line) => {
+                self.login_lines.push(line.clone());
                 if self.login_url.is_none() {
                     self.login_url = line
                         .split_whitespace()
@@ -585,6 +599,7 @@ impl Model {
             }
             Msg::LoginFinished(result) => {
                 self.login_url = None;
+                self.login_lines.clear();
                 match result {
                     Ok(()) => {
                         self.session = SessionState::Checking;
@@ -2552,10 +2567,55 @@ pub(crate) mod tests {
             Some("https://x.example/a"),
             "first URL wins"
         );
+        assert_eq!(
+            m.login_lines,
+            ["visit https://x.example/a b", "https://y.example"]
+        );
         let fx = m.update(Msg::LoginFinished(Ok(())), 0);
         assert_eq!(m.session, SessionState::Checking);
         assert_eq!(names(&fx), ["ProbeSession"]);
         assert!(m.login_url.is_none());
+        assert!(m.login_lines.is_empty());
+    }
+
+    #[test]
+    fn a_new_login_forgets_the_last_ones_lines() {
+        let mut m = Model::default();
+        m.update(Msg::SessionProbed(Err(PassError::SignedOut)), 0);
+        m.update(Msg::StartLogin, 0);
+        m.update(Msg::LoginLine("old".into()), 0);
+        m.update(Msg::LoginFinished(Err(PassError::Timeout)), 0);
+        assert!(m.login_lines.is_empty());
+        m.update(Msg::StartLogin, 0);
+        assert!(m.login_lines.is_empty());
+    }
+
+    #[test]
+    fn select_moves_the_field_highlight_and_drops_the_reveal() {
+        let mut item = login("a", "GitHub");
+        item.fields = vec![
+            FieldRef::plain("username", "Username", "octocat".into()),
+            FieldRef::secret("password", "Password"),
+            FieldRef::secret("pin", "PIN"),
+        ];
+        let mut m = loaded(vec![item]);
+        m.update(Msg::OpenActions, 0);
+        let actions = m.actions();
+        let at = |label: &str| actions.iter().position(|a| a.label == label).unwrap();
+        let (pin, password) = (at("PIN"), at("Password"));
+        m.update(Msg::Select(pin), 0);
+        assert!(matches!(m.view.mode, Mode::Actions { selected, .. } if selected == pin));
+        m.update(Msg::ToggleReveal, 0);
+        assert!(m.view.reveal_cancel.is_some(), "reveal fetch started");
+        m.update(Msg::Select(password), 0);
+        assert!(matches!(m.view.mode, Mode::Actions { selected, .. } if selected == password));
+        assert!(m.view.reveal_cancel.is_none(), "reveal left behind");
+        m.update(Msg::Select(actions.len()), 0);
+        assert!(
+            matches!(m.view.mode, Mode::Actions { selected, .. } if selected == password),
+            "out of range is ignored"
+        );
+        assert_eq!(m.view.selected, 0, "the item list selection is untouched");
     }
 
     #[test]

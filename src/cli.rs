@@ -22,6 +22,13 @@ pub enum Command {
     Hide,
     /// Refresh items in the background.
     Refresh,
+    /// Run without a window for another front end: JSON intents on stdin, JSON snapshots on
+    /// stdout (specs/004-serve-mode/contracts/serve-protocol.md).
+    Serve {
+        /// Seconds a copied secret stays on the clipboard.
+        #[arg(long, value_parser = clap::value_parser!(u32).range(10..=600))]
+        clipboard_clear_secs: u32,
+    },
     /// Internal: serve a value from stdin on the clipboard.
     #[command(hide = true)]
     ClipboardServe {
@@ -67,6 +74,32 @@ mod tests {
     fn timeout_is_required_by_the_parser() {
         // Documents why helper_args always passes it, whatever the copy's secrecy.
         assert!(Cli::try_parse_from(["cosmic-pass", "clipboard-serve"]).is_err());
+    }
+
+    /// The flag's range must be the one the preferences enforce, or `serve` would accept a
+    /// timeout the popup clamps away.
+    #[test]
+    fn serve_takes_the_preference_range() {
+        let parse = |secs: &str| {
+            Cli::try_parse_from(["cosmic-pass", "serve", "--clipboard-clear-secs", secs])
+                .map(|cli| cli.command)
+        };
+        let (low, high) = (
+            *crate::config::CLIPBOARD_CLEAR_RANGE.start(),
+            *crate::config::CLIPBOARD_CLEAR_RANGE.end(),
+        );
+        for ok in [low, high] {
+            assert_eq!(
+                parse(&ok.to_string()).unwrap(),
+                Some(Command::Serve {
+                    clipboard_clear_secs: ok
+                })
+            );
+        }
+        for bad in [low - 1, high + 1] {
+            assert!(parse(&bad.to_string()).is_err(), "{bad} accepted");
+        }
+        assert!(Cli::try_parse_from(["cosmic-pass", "serve"]).is_err());
     }
 
     #[test]

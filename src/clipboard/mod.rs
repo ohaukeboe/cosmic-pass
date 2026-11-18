@@ -226,6 +226,31 @@ pub fn shared(clipboard: HelperClipboard) -> Arc<dyn Clipboard> {
     Arc::new(clipboard)
 }
 
+/// Used when the clipboard helper cannot be located; every copy fails visibly.
+pub struct NoClipboard;
+
+impl Clipboard for NoClipboard {
+    fn copy(
+        &self,
+        _value: SecretString,
+        _secret: bool,
+        _clear_after: Duration,
+    ) -> BoxFuture<'_, Result<(), ClipboardError>> {
+        Box::pin(async { Err(ClipboardError::Unavailable) })
+    }
+}
+
+/// The real helper, or [`NoClipboard`] with the reason logged when it cannot be found.
+pub fn from_env_or_none() -> Arc<dyn Clipboard> {
+    match HelperClipboard::from_env() {
+        Ok(clipboard) => shared(clipboard),
+        Err(e) => {
+            tracing::error!("clipboard helper unavailable: {e}");
+            Arc::new(NoClipboard)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

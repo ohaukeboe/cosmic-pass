@@ -9,5 +9,6 @@ pub mod core;
 pub mod model;
 pub mod pass;
 pub mod runtime;
+pub mod serve;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
