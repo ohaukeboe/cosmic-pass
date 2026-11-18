@@ -135,17 +135,18 @@ async fn the_action_list_shows_why_a_copy_did_nothing() {
     );
 }
 
-/// A website is re-read on copy like any other field, so a URL edited in Proton Pass since
-/// the last refresh is not copied stale (cosmic-pass-wqx.34).
+/// A website comes from the listing: `pass-cli` has no `url` field to re-read (its key is
+/// `urls`, an array), so the fetch cosmic-pass-wqx.34 asked for always failed against the
+/// real tool. A URL edited since the last refresh is copied as it was then.
 #[tokio::test]
-async fn copy_url_fetches_the_current_value() {
+async fn copy_url_copies_the_listed_value() {
     let mut h = opened("github").await;
     h.send(Msg::CopyUrl).await;
     assert_eq!(
         last_copy(&h),
         Some(("https://github.com/login".into(), false))
     );
-    assert_eq!(h.backend.field_calls(), 1);
+    assert_eq!(h.backend.field_calls(), 0);
     assert_eq!(h.backend.totp_calls(), 0);
     assert_eq!(
         h.clipboard.copies()[0].2,
@@ -210,8 +211,8 @@ async fn action_list_lists_every_website() {
     );
     assert_eq!(
         (h.backend.field_calls(), h.backend.totp_calls()),
-        (1, 0),
-        "a website is fetched on copy, not taken from the summary"
+        (0, 0),
+        "pass-cli cannot address a website by field, so it comes from the summary"
     );
 }
 

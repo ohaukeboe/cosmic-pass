@@ -611,10 +611,10 @@ impl Model {
                     }
                 }
             }
-            Msg::CopyPrimary => self.copy_with(primary_action, "Nothing to copy"),
-            Msg::CopyUsername => self.copy_with(username_action, "This item has no username"),
-            Msg::CopyTotp => self.copy_with(totp_action, "This item has no one-time code"),
-            Msg::CopyUrl => self.copy_with(url_action, "This item has no website"),
+            Msg::CopyPrimary => self.copy_with(primary_action, "Nothing to copy", now),
+            Msg::CopyUsername => self.copy_with(username_action, "This item has no username", now),
+            Msg::CopyTotp => self.copy_with(totp_action, "This item has no one-time code", now),
+            Msg::CopyUrl => self.copy_with(url_action, "This item has no website", now),
             Msg::OpenActions => {
                 if let Some(key) = self.selected_item().map(|i| i.key.clone()) {
                     self.view.mode = Mode::Actions { key, selected: 0 };
@@ -627,7 +627,7 @@ impl Model {
                 };
                 let (key, index) = (key.clone(), index.unwrap_or(*selected));
                 match self.actions().into_iter().nth(index) {
-                    Some(entry) => self.start_copy(key, entry.source),
+                    Some(entry) => self.start_copy(key, entry.source, now),
                     None => vec![],
                 }
             }
@@ -875,13 +875,14 @@ impl Model {
         &mut self,
         pick: fn(&ItemSummary) -> Option<CopySource>,
         missing: &str,
+        now: i64,
     ) -> Vec<Effect> {
         let Some(item) = self.target_item() else {
             return vec![];
         };
         let key = item.key.clone();
         match pick(item) {
-            Some(source) => self.start_copy(key, source),
+            Some(source) => self.start_copy(key, source, now),
             None => vec![self.notify(missing)],
         }
     }
@@ -1021,8 +1022,21 @@ impl Model {
         }
     }
 
-    fn start_copy(&mut self, key: ItemKey, source: CopySource) -> Vec<Effect> {
+    fn start_copy(&mut self, key: ItemKey, source: CopySource, now: i64) -> Vec<Effect> {
         self.cancel_pending();
+        // `pass-cli` has no `url` field to fetch (its key is `urls`, an array), so a website
+        // is copied from the listing, as contracts/pass-cli.md specifies for the first URL.
+        if let CopySource::Field(field) = &source
+            && is_website(&field.name)
+            && let Some(value) = &field.value
+        {
+            let mut effects = vec![Effect::Copy {
+                value: SecretString::from(value.clone()),
+                secret: false,
+            }];
+            effects.extend(self.finish_copy(&key, now));
+            return effects;
+        }
         let secret = source.is_secret();
         let cancel = CancellationToken::new();
         let effect = match source {
@@ -1227,6 +1241,12 @@ impl Model {
 }
 
 const NOTICE_DURATION: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// The parser's names for a login's websites: `url`, then `url2`, `url3`, ...
+fn is_website(name: &str) -> bool {
+    name.strip_prefix("url")
+        .is_some_and(|rest| rest.chars().all(|c| c.is_ascii_digit()))
+}
 
 #[cfg(test)]
 pub(crate) mod tests {
@@ -1556,27 +1576,31 @@ pub(crate) mod tests {
     #[test]
     fn a_stored_copy_hides_only_once_the_clipboard_confirms() {
         let mut m = opened(vec![with_url("a", "GitHub")]);
-        // A non-secret field is fetched like any other, so the copy lands on the reply.
-        assert!(matches!(
-            m.update(Msg::CopyUrl, 5_000)[..],
-            [Effect::FetchAndCopy { secret: false, .. }]
-        ));
-        let fx = m.update(
-            Msg::CopyFetched {
-                key: ItemKey::new("s", "a"),
-                result: Ok(SecretString::from("https://github.com/login")),
-            },
-            5_000,
-        );
-        assert!(matches!(
-            fx[..],
-            [Effect::Copy { secret: false, .. }, Effect::Persist]
-        ));
+        // `pass-cli` cannot address a website by field, so it is copied from the listing.
+        let fx = m.update(Msg::CopyUrl, 5_000);
+        match &fx[..] {
+            [
+                Effect::Copy {
+                    value,
+                    secret: false,
+                },
+                Effect::Persist,
+            ] => {
+                assert_eq!(value.expose_secret(), "https://example.invalid");
+            }
+            other => panic!("{other:?}"),
+        }
         assert!(m.view.visible, "the window stays up until the copy lands");
         assert_eq!(m.usage.recency(&ItemKey::new("s", "a")), Some(5_000));
         let fx = m.update(Msg::CopyFinished(Ok(())), 5_000);
         assert!(matches!(fx[..], [Effect::HideWindow]));
         assert!(!m.view.visible);
+    }
+
+    #[test]
+    fn only_website_fields_skip_the_fetch() {
+        assert!(is_website("url") && is_website("url2") && is_website("url12"));
+        assert!(!is_website("urls") && !is_website("url_custom") && !is_website("username"));
     }
 
     #[test]

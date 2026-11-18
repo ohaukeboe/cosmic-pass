@@ -496,3 +496,17 @@ async fn retry_checks_the_session_again() {
         .until("signed in", |s| s["session"] == "signed_in")
         .await;
 }
+
+#[tokio::test]
+async fn copy_url_copies_the_first_website_without_asking_pass_cli() {
+    let mut item = login("gh", "GitHub", "octocat");
+    item.fields.push(FieldRef::plain(
+        "url",
+        "Website",
+        "https://github.com/login".into(),
+    ));
+    let mut serve = Serve::loaded(FakeBackend::with_items(vec![item])).await;
+    serve.send(r#"{"t":"copy_url"}"#).await;
+    serve.until("closes", |s| s["visible"] == false).await;
+    assert_eq!(serve.clipboard.copies()[0].0, "https://github.com/login");
+}
