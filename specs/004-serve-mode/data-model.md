@@ -8,24 +8,28 @@ file says where each value comes from in the reducer's `Model` and what rules ho
 One line from stdin. Tagged by `t`; unknown fields ignored; unknown `t` or a parse failure is
 logged (without the line's content) and skipped.
 
-| `t`            | Argument               | `Msg`                    |
-|----------------|------------------------|--------------------------|
-| `show`         |                        | `Show`                   |
-| `hide`         |                        | `Hide`                   |
-| `query`        | `text: String`         | `QueryChanged(text)`     |
-| `next`         |                        | `SelectNext`             |
-| `prev`         |                        | `SelectPrev`             |
-| `page_down`    |                        | `PageDown`               |
-| `page_up`      |                        | `PageUp`                 |
-| `select`       | `index: usize`         | `Select(index)`          |
-| `copy_primary` |                        | `CopyPrimary`            |
-| `open_fields`  |                        | `OpenActions`            |
-| `activate`     | `index: Option<usize>` | `ActivateAction(index)`  |
-| `reveal`       |                        | `ToggleReveal`           |
-| `back`         |                        | `Back`                   |
-| `escape`       |                        | `Escape`                 |
-| `refresh`      |                        | `RefreshRequested`       |
-| `login`        |                        | `StartLogin`             |
+| `t`             | Argument               | `Msg`                   |
+|-----------------|------------------------|-------------------------|
+| `show`          |                        | `Show`                  |
+| `hide`          |                        | `Hide`                  |
+| `query`         | `text: String`         | `QueryChanged(text)`    |
+| `next`          |                        | `SelectNext`            |
+| `prev`          |                        | `SelectPrev`            |
+| `page_down`     |                        | `PageDown`              |
+| `page_up`       |                        | `PageUp`                |
+| `select`        | `index: usize`         | `Select(index)`         |
+| `copy_primary`  |                        | `CopyPrimary`           |
+| `open_fields`   |                        | `OpenActions`           |
+| `activate`      | `index: Option<usize>` | `ActivateAction(index)` |
+| `reveal`        |                        | `ToggleReveal`          |
+| `back`          |                        | `Back`                  |
+| `escape`        |                        | `Escape`                |
+| `refresh`       |                        | `RefreshRequested`      |
+| `login`         |                        | `StartLogin`            |
+| `copy_username` |                        | `CopyUsername`          |
+| `copy_totp`     |                        | `CopyTotp`              |
+| `copy_url`      |                        | `CopyUrl`               |
+| `retry`         |                        | `Startup`               |
 
 `Select` moves the list selection in list mode, and the field highlight in fields mode, dropping
 any reveal as the arrows do. The fields-mode half is new: a pointer needs it to reveal one row

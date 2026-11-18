@@ -29,6 +29,9 @@ pub enum Intent {
         index: usize,
     },
     CopyPrimary,
+    CopyUsername,
+    CopyTotp,
+    CopyUrl,
     OpenFields,
     Activate {
         #[serde(default)]
@@ -39,6 +42,7 @@ pub enum Intent {
     Escape,
     Refresh,
     Login,
+    Retry,
 }
 
 impl From<Intent> for Msg {
@@ -53,6 +57,9 @@ impl From<Intent> for Msg {
             Intent::PageUp => Msg::PageUp,
             Intent::Select { index } => Msg::Select(index),
             Intent::CopyPrimary => Msg::CopyPrimary,
+            Intent::CopyUsername => Msg::CopyUsername,
+            Intent::CopyTotp => Msg::CopyTotp,
+            Intent::CopyUrl => Msg::CopyUrl,
             Intent::OpenFields => Msg::OpenActions,
             Intent::Activate { index } => Msg::ActivateAction(index),
             Intent::Reveal => Msg::ToggleReveal,
@@ -60,6 +67,8 @@ impl From<Intent> for Msg {
             Intent::Escape => Msg::Escape,
             Intent::Refresh => Msg::RefreshRequested,
             Intent::Login => Msg::StartLogin,
+            // What the COSMIC popup's "Try again" sends.
+            Intent::Retry => Msg::Startup,
         }
     }
 }
@@ -258,7 +267,7 @@ mod tests {
 
     #[test]
     fn every_intent_reaches_its_message() {
-        let cases: [(&str, &str); 16] = [
+        let cases: [(&str, &str); 20] = [
             (r#"{"t":"show"}"#, "Show"),
             (r#"{"t":"hide"}"#, "Hide"),
             (r#"{"t":"query","text":"gh"}"#, r#"QueryChanged("gh")"#),
@@ -275,6 +284,10 @@ mod tests {
             (r#"{"t":"escape"}"#, "Escape"),
             (r#"{"t":"refresh"}"#, "RefreshRequested"),
             (r#"{"t":"login"}"#, "StartLogin"),
+            (r#"{"t":"copy_username"}"#, "CopyUsername"),
+            (r#"{"t":"copy_totp"}"#, "CopyTotp"),
+            (r#"{"t":"copy_url"}"#, "CopyUrl"),
+            (r#"{"t":"retry"}"#, "Startup"),
         ];
         for (line, msg) in cases {
             assert_eq!(format!("{:?}", parse(line)), msg, "{line}");

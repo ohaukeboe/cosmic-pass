@@ -27,26 +27,33 @@ cannot parse is logged and skipped; it does not exit.
 
 Each is `{"t": "<name>", ...}` and maps to one existing `Msg`.
 
-| `t`            | Other fields            | `Msg`                    |
-|----------------|-------------------------|--------------------------|
-| `show`         |                         | `Show`                   |
-| `hide`         |                         | `Hide`                   |
-| `query`        | `text: string`          | `QueryChanged`           |
-| `next`         |                         | `SelectNext`             |
-| `prev`         |                         | `SelectPrev`             |
-| `page_down`    |                         | `PageDown`               |
-| `page_up`      |                         | `PageUp`                 |
-| `select`       | `index: number`         | `Select`                 |
-| `copy_primary` |                         | `CopyPrimary`            |
-| `open_fields`  |                         | `OpenActions`            |
-| `activate`     | `index: number \| null` | `ActivateAction`         |
-| `reveal`       |                         | `ToggleReveal`           |
-| `back`         |                         | `Back`                   |
-| `escape`       |                         | `Escape`                 |
-| `refresh`      |                         | `RefreshRequested`       |
-| `login`        |                         | `StartLogin`             |
+| `t`             | Other fields     | `Msg`              |
+|-----------------|------------------|--------------------|
+| `show`          |                  | `Show`             |
+| `hide`          |                  | `Hide`             |
+| `query`         | `text: string`   | `QueryChanged`     |
+| `next`          |                  | `SelectNext`       |
+| `prev`          |                  | `SelectPrev`       |
+| `page_down`     |                  | `PageDown`         |
+| `page_up`       |                  | `PageUp`           |
+| `select`        | `index: number`  | `Select`           |
+| `copy_primary`  |                  | `CopyPrimary`      |
+| `open_fields`   |                  | `OpenActions`      |
+| `activate`      | `index: number \ | null`              |
+| `reveal`        |                  | `ToggleReveal`     |
+| `back`          |                  | `Back`             |
+| `escape`        |                  | `Escape`           |
+| `refresh`       |                  | `RefreshRequested` |
+| `login`         |                  | `StartLogin`       |
+| `copy_username` |                  | `CopyUsername`     |
+| `copy_totp`     |                  | `CopyTotp`         |
+| `copy_url`      |                  | `CopyUrl`          |
+| `retry`         |                  | `Startup`          |
 
 The preference and key-rebinding messages are not reachable.
+`copy_username`, `copy_totp` and `copy_url` are the COSMIC popup's `Ctrl+U`,
+`Ctrl+O` and `Ctrl+L`. `retry` is its "Try again": the front end offers it
+for `locked`, `cli_missing` and `error` only.
 
 ## Snapshots (backend to shell)
 

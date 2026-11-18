@@ -438,3 +438,61 @@ async fn search_bench_serve_query() {
         "query snapshot took {elapsed:?}"
     );
 }
+
+/// The GitHub item highlighted, as the copy chords of specs/017 (dot-emacs) need.
+async fn github_highlighted() -> Serve {
+    let mut serve = Serve::loaded(backend()).await;
+    serve.send(r#"{"t":"query","text":"git"}"#).await;
+    serve
+        .until("GitHub first", |s| s["rows"][0]["title"] == "GitHub")
+        .await;
+    serve
+}
+
+#[tokio::test]
+async fn copy_username_and_code_close_like_enter() {
+    for (intent, value) in [("copy_username", "octocat"), ("copy_totp", CODE)] {
+        let mut serve = github_highlighted().await;
+        serve.send(&format!(r#"{{"t":"{intent}"}}"#)).await;
+        serve.until("closes", |s| s["visible"] == false).await;
+        let copies = serve.clipboard.copies();
+        assert_eq!(copies.len(), 1, "{intent}");
+        assert_eq!(copies[0].0, value, "{intent}");
+        // The username is drawn in the row anyway; only the code is a guarded copy.
+        if intent == "copy_totp" {
+            serve.assert_guarantees();
+        }
+    }
+}
+
+#[tokio::test]
+async fn copy_username_in_fields_mode_ignores_the_highlight() {
+    let mut serve = github_highlighted().await;
+    serve.send(r#"{"t":"open_fields"}"#).await;
+    serve.until("fields", |s| s["mode"] == "fields").await;
+    serve.send(r#"{"t":"copy_username"}"#).await;
+    serve.until("closes", |s| s["visible"] == false).await;
+    assert_eq!(serve.clipboard.copies()[0].0, "octocat");
+}
+
+#[tokio::test]
+async fn copy_url_without_a_website_says_so_and_stays_open() {
+    let mut serve = github_highlighted().await;
+    serve.send(r#"{"t":"copy_url"}"#).await;
+    let s = serve.until("a notice", |s| !s["notice"].is_null()).await;
+    assert_eq!(s["visible"], true);
+    assert!(serve.clipboard.copies().is_empty());
+}
+
+#[tokio::test]
+async fn retry_checks_the_session_again() {
+    let backend = Arc::new(backend());
+    backend.set_account(Err(PassError::Locked));
+    let mut serve = Serve::with_backend(backend.clone());
+    serve.until("locked", |s| s["session"] == "locked").await;
+    backend.set_account(Ok(AccountId("account-1".into())));
+    serve.send(r#"{"t":"retry"}"#).await;
+    serve
+        .until("signed in", |s| s["session"] == "signed_in")
+        .await;
+}
